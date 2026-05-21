@@ -296,14 +296,15 @@
         for (const block of preBlocks) await translateNodeByNode(block);
         if (nonPreBlocks.length > 0) await translateByBlocks(nonPreBlocks);
       })();
-      const subjectPromise = sendSubjectTranslateRequest().catch(() => null);
+      const subjectPromise = sendSubjectTranslateRequest();
 
       await bodyPromise;
+      translatedSubject = await subjectPromise;
+
       isTranslated = true;
       translationCached = true;
 
-      translatedSubject = await subjectPromise;
-      if (translatedSubject) injectSubjectBar(translatedSubject);
+      if (translatedSubject?.translated) injectSubjectBar(translatedSubject);
 
       return { success: true };
     } catch (e) {

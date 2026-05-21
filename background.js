@@ -53,6 +53,30 @@ const COMPOSE_LANG_KEY = {
 
 // --- Settings ---
 
+async function updateReadButtonTitle() {
+  const settings = await messenger.storage.local.get({
+    service: DEFAULT_SERVICE,
+    ollamaTargetLang: "en",
+    googleTargetLang: "en",
+    libreTargetLang: "en",
+  });
+  const langKey = LANG_STORAGE_KEY[settings.service] || "googleTargetLang";
+  const lang = (settings[langKey] || "en").toUpperCase();
+  messenger.messageDisplayAction.setTitle({ title: `Translate (${lang})` });
+}
+
+async function updateComposeButtonTitle() {
+  const settings = await messenger.storage.local.get({
+    service: DEFAULT_SERVICE,
+    ollamaComposeLang: "en",
+    googleComposeLang: "en",
+    libreComposeLang: "en",
+  });
+  const langKey = COMPOSE_LANG_KEY[settings.service] || "googleComposeLang";
+  const lang = (settings[langKey] || "en").toUpperCase();
+  messenger.composeAction.setTitle({ title: `Translate (${lang})` });
+}
+
 async function getSettings() {
   return messenger.storage.local.get({
     ollamaUrl: DEFAULT_OLLAMA_URL,
@@ -92,6 +116,10 @@ if (messenger.composeScripts) {
     console.warn("[Translator] composeScripts.register failed:", e.message);
   });
 }
+
+// Set initial button titles from stored language preferences
+updateReadButtonTitle();
+updateComposeButtonTitle();
 
 // --- Port management ---
 
@@ -451,12 +479,14 @@ browser.menus.onClicked.addListener(async (info) => {
     const lang    = info.menuItemId.replace("read-lang-", "");
     const langKey = LANG_STORAGE_KEY[service] || "googleTargetLang";
     await messenger.storage.local.set({ [langKey]: lang });
+    messenger.messageDisplayAction.setTitle({ title: `Translate (${lang.toUpperCase()})` });
     return;
   }
   if (String(info.menuItemId).startsWith("compose-lang-")) {
     const lang    = info.menuItemId.replace("compose-lang-", "");
     const langKey = COMPOSE_LANG_KEY[service] || "googleComposeLang";
     await messenger.storage.local.set({ [langKey]: lang });
+    messenger.composeAction.setTitle({ title: `Translate (${lang.toUpperCase()})` });
   }
 });
 
@@ -542,6 +572,8 @@ messenger.runtime.onMessage.addListener(async (message) => {
       libreApiKey:  message.libreApiKey,
       service:      message.service,
     });
+    updateReadButtonTitle();
+    updateComposeButtonTitle();
     return { success: true };
   }
 
