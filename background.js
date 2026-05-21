@@ -369,20 +369,37 @@ browser.menus.create({
   contexts: ["message_display_action"],
 });
 
+// Read: "Translate to" submenu
 browser.menus.create({
-  id: "translate-to",
+  id: "translate-to-read",
   title: "Translate to",
-  contexts: ["message_display_action", "compose_action"],
+  contexts: ["message_display_action"],
 });
-
 for (const lang of LANGUAGES) {
   browser.menus.create({
-    id: `lang-${lang.value}`,
-    parentId: "translate-to",
+    id: `read-lang-${lang.value}`,
+    parentId: "translate-to-read",
     title: lang.label,
     type: "radio",
     checked: lang.value === "en",
-    contexts: ["message_display_action", "compose_action"],
+    contexts: ["message_display_action"],
+  });
+}
+
+// Compose: "Translate to" submenu (separate keys)
+browser.menus.create({
+  id: "translate-to-compose",
+  title: "Translate to",
+  contexts: ["compose_action"],
+});
+for (const lang of LANGUAGES) {
+  browser.menus.create({
+    id: `compose-lang-${lang.value}`,
+    parentId: "translate-to-compose",
+    title: lang.label,
+    type: "radio",
+    checked: lang.value === "en",
+    contexts: ["compose_action"],
   });
 }
 
@@ -405,13 +422,19 @@ browser.menus.onShown.addListener(async (info) => {
 
   if (isRead) {
     await browser.menus.update("auto-translate", { checked: settings.autoTranslate });
+    const readLangKey  = LANG_STORAGE_KEY[settings.service] || "googleTargetLang";
+    const activeReadLang = settings[readLangKey] || "en";
+    for (const lang of LANGUAGES) {
+      await browser.menus.update(`read-lang-${lang.value}`, { checked: lang.value === activeReadLang });
+    }
   }
 
-  const keyMap  = isCompose ? COMPOSE_LANG_KEY : LANG_STORAGE_KEY;
-  const langKey = keyMap[settings.service] || (isCompose ? "googleComposeLang" : "googleTargetLang");
-  const activeLang = settings[langKey] || "en";
-  for (const lang of LANGUAGES) {
-    await browser.menus.update(`lang-${lang.value}`, { checked: lang.value === activeLang });
+  if (isCompose) {
+    const composeLangKey  = COMPOSE_LANG_KEY[settings.service] || "googleComposeLang";
+    const activeComposeLang = settings[composeLangKey] || "en";
+    for (const lang of LANGUAGES) {
+      await browser.menus.update(`compose-lang-${lang.value}`, { checked: lang.value === activeComposeLang });
+    }
   }
 
   browser.menus.refresh();
@@ -423,12 +446,16 @@ browser.menus.onClicked.addListener(async (info) => {
     await messenger.storage.local.set({ autoTranslate: info.checked });
     return;
   }
-  if (String(info.menuItemId).startsWith("lang-")) {
-    const lang = info.menuItemId.replace("lang-", "");
-    const { service } = await messenger.storage.local.get({ service: DEFAULT_SERVICE });
-    const isCompose = info.contexts?.includes("compose_action");
-    const keyMap  = isCompose ? COMPOSE_LANG_KEY : LANG_STORAGE_KEY;
-    const langKey = keyMap[service] || (isCompose ? "googleComposeLang" : "googleTargetLang");
+  const { service } = await messenger.storage.local.get({ service: DEFAULT_SERVICE });
+  if (String(info.menuItemId).startsWith("read-lang-")) {
+    const lang    = info.menuItemId.replace("read-lang-", "");
+    const langKey = LANG_STORAGE_KEY[service] || "googleTargetLang";
+    await messenger.storage.local.set({ [langKey]: lang });
+    return;
+  }
+  if (String(info.menuItemId).startsWith("compose-lang-")) {
+    const lang    = info.menuItemId.replace("compose-lang-", "");
+    const langKey = COMPOSE_LANG_KEY[service] || "googleComposeLang";
     await messenger.storage.local.set({ [langKey]: lang });
   }
 });
