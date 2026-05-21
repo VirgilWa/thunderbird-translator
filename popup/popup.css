@@ -3,7 +3,7 @@
 body {
   margin: 0;
   padding: 10px;
-  min-width: 320px;
+  min-width: 260px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 13px;
   background: Canvas;
@@ -15,10 +15,10 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
 }
 
 select {
+  flex: 1;
   padding: 4px 6px;
   border-radius: 4px;
   font-size: 12px;
@@ -44,16 +44,6 @@ button:disabled { background: #8ab4f8; border-color: #8ab4f8; cursor: default; }
 #status:not(:empty) { margin-top: 6px; }
 #status.error   { color: #c00; }
 #status.success { color: #1a7f37; }
-
-#auto-label {
-  display: none;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  font-size: 12px;
-  cursor: pointer;
-}
-#auto-label.visible { display: flex; }
 
 @media (prefers-color-scheme: dark) {
   button          { background: #2d5fa8; border-color: #2d5fa8; color: #e8edf8; }

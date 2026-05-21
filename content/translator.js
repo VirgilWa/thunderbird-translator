@@ -28,11 +28,20 @@
   // --- Port to background ---
 
   const port = browser.runtime.connect({ name: "translator" });
-  const pendingRequests = new Map();
+  const pendingRequests        = new Map(); // text translate requests
+  const subjectPendingRequests = new Map(); // subject translate requests (return full info object)
   let nextRequestId = 0;
 
   port.onMessage.addListener(async (message) => {
-    // Translate API response
+    // Subject translate response — resolve with full info object
+    if (message.id != null && subjectPendingRequests.has(message.id)) {
+      const { resolve, reject } = subjectPendingRequests.get(message.id);
+      subjectPendingRequests.delete(message.id);
+      if (message.success) resolve({ translated: message.translated, serviceLabel: message.serviceLabel, serviceUrl: message.serviceUrl });
+      else reject(new Error(message.error));
+      return;
+    }
+    // Text translate response
     if (message.id != null && pendingRequests.has(message.id)) {
       const { resolve, reject } = pendingRequests.get(message.id);
       pendingRequests.delete(message.id);
@@ -69,7 +78,7 @@
   function sendSubjectTranslateRequest() {
     return new Promise((resolve, reject) => {
       const id = nextRequestId++;
-      pendingRequests.set(id, { resolve, reject });
+      subjectPendingRequests.set(id, { resolve, reject });
       port.postMessage({ command: "getTranslatedSubject", id });
     });
   }
@@ -87,9 +96,7 @@
         left: 0;
         right: 0;
         z-index: 9999;
-        padding: 5px 12px;
-        font-size: 16px;
-        font-weight: 600;
+        padding: 5px 12px 6px;
         background: Canvas;
         color: CanvasText;
         border-bottom: 1px solid GrayText;
@@ -97,20 +104,42 @@
         color-scheme: light dark;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       }
+      #__translator_service_info__ {
+        font-size: 11px;
+        font-weight: normal;
+        color: GrayText;
+        margin-bottom: 2px;
+      }
+      #__translator_subject_text__ {
+        font-size: 16px;
+        font-weight: 600;
+      }
     `;
     document.head.appendChild(style);
   }
 
-  function injectSubjectBar(text) {
+  function injectSubjectBar({ translated, serviceLabel, serviceUrl }) {
     removeSubjectBar();
     createSubjectBarStyle();
     const bar = document.createElement("div");
     bar.id = "__translator_subject_bar__";
-    bar.textContent = "📧 " + text;
+
+    const infoLine = document.createElement("div");
+    infoLine.id = "__translator_service_info__";
+    infoLine.textContent = serviceUrl
+      ? `🌐 Translated via ${serviceLabel} (${serviceUrl})`
+      : `🌐 Translated via ${serviceLabel}`;
+
+    const subjectLine = document.createElement("div");
+    subjectLine.id = "__translator_subject_text__";
+    subjectLine.textContent = "📧 " + translated;
+
+    bar.appendChild(infoLine);
+    bar.appendChild(subjectLine);
     document.body.insertBefore(bar, document.body.firstChild);
     subjectBar = bar;
     requestAnimationFrame(() => {
-      const height = bar.getBoundingClientRect().height || 36;
+      const height = bar.getBoundingClientRect().height || 52;
       document.body.style.setProperty("padding-top", height + "px", "important");
       document.body.style.setProperty("margin-top", "0", "important");
     });

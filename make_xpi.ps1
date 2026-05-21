@@ -23,8 +23,8 @@ $includes = @(
     'popup\popup.css',
     'options\options.html',
     'options\options.js',
-    'icons\translate-48.png',
-    'icons\translate-96.png'
+    'icons\translate-dark.svg',
+    'icons\translate-light.svg'
 )
 
 foreach ($rel in $includes) {

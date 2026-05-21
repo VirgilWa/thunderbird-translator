@@ -11,20 +11,28 @@ function translatePage() {
   });
 }
 
-const urlInput = document.getElementById("ollamaUrl");
-const modelSelect = document.getElementById("model");
+// --- Element refs ---
+const urlInput          = document.getElementById("ollamaUrl");
+const modelSelect       = document.getElementById("model");
 const ollamaApiKeyInput = document.getElementById("ollamaApiKey");
-const libreUrlInput = document.getElementById("libreUrl");
-const libreApiKeyInput = document.getElementById("libreApiKey");
-const refreshBtn    = document.getElementById("refreshModels");
-const testBtn       = document.getElementById("testConnection");
-const testLibreBtn  = document.getElementById("testLibreConnection");
-const saveBtn       = document.getElementById("save");
-const statusDiv     = document.getElementById("status");
+const libreUrlInput     = document.getElementById("libreUrl");
+const libreApiKeyInput  = document.getElementById("libreApiKey");
+const refreshBtn        = document.getElementById("refreshModels");
+const testBtn           = document.getElementById("testConnection");
+const testLibreBtn      = document.getElementById("testLibreConnection");
+const saveBtn           = document.getElementById("save");
+const statusDiv         = document.getElementById("status");
+const serviceRadios     = document.querySelectorAll("input[name='service']");
 
+// --- Status ---
 function showStatus(messageKey, isError, replacements = {}) {
   const message = browser.i18n.getMessage(messageKey, Object.values(replacements));
-  statusDiv.textContent = message;
+  statusDiv.textContent = message || messageKey;
+  statusDiv.className = "status " + (isError ? "error" : "success");
+}
+
+function showStatusText(text, isError) {
+  statusDiv.textContent = text;
   statusDiv.className = "status " + (isError ? "error" : "success");
 }
 
@@ -33,6 +41,21 @@ function clearStatus() {
   statusDiv.textContent = "";
 }
 
+// --- Service radio helpers ---
+function getSelectedService() {
+  for (const r of serviceRadios) {
+    if (r.checked) return r.value;
+  }
+  return "google";
+}
+
+function setSelectedService(service) {
+  for (const r of serviceRadios) {
+    r.checked = (r.value === service);
+  }
+}
+
+// --- Load settings ---
 async function loadSettings() {
   const settings = await browser.storage.local.get({
     ollamaUrl: "http://localhost:11434",
@@ -40,15 +63,19 @@ async function loadSettings() {
     ollamaApiKey: "",
     libreUrl: "https://libretranslate.com",
     libreApiKey: "",
+    service: "google",
   });
 
   urlInput.value = settings.ollamaUrl;
   ollamaApiKeyInput.value = settings.ollamaApiKey;
   libreUrlInput.value = settings.libreUrl;
   libreApiKeyInput.value = settings.libreApiKey;
+  setSelectedService(settings.service);
+
   await loadModels(settings.model);
 }
 
+// --- Models ---
 async function loadModels(selectedModel, ollamaUrl) {
   const result = await browser.runtime.sendMessage({ command: "getModels", ollamaUrl });
 
@@ -59,7 +86,6 @@ async function loadModels(selectedModel, ollamaUrl) {
     opt.value = "";
     opt.textContent = browser.i18n.getMessage("cannotLoadModels");
     modelSelect.appendChild(opt);
-
     if (selectedModel) {
       const saved = document.createElement("option");
       saved.value = selectedModel;
@@ -104,13 +130,8 @@ refreshBtn.addEventListener("click", async () => {
 testBtn.addEventListener("click", async () => {
   clearStatus();
   const url = urlInput.value.trim();
-  if (!url) {
-    showStatus("urlRequired", true);
-    return;
-  }
-
+  if (!url) { showStatus("urlRequired", true); return; }
   const result = await browser.runtime.sendMessage({ command: "testConnection", ollamaUrl: url });
-
   if (result.success) {
     showStatus("connectionSuccess", false, { count: result.models.length });
     await loadModels(modelSelect.value, url);
@@ -123,7 +144,6 @@ testLibreBtn.addEventListener("click", async () => {
   clearStatus();
   const url = libreUrlInput.value.trim();
   if (!url) { showStatus("urlRequired", true); return; }
-
   try {
     const base = url.replace(/\/+$/, "").replace(/\/translate$/, "");
     const apiKey = libreApiKeyInput.value.trim();
@@ -132,29 +152,35 @@ testLibreBtn.addEventListener("click", async () => {
     if (!resp.ok) throw new Error("HTTP " + resp.status + " " + resp.statusText);
     const langs = await resp.json();
     if (!Array.isArray(langs)) throw new Error("Unexpected response format");
-    statusDiv.textContent = "Connected. " + langs.length + " languages available.";
-    statusDiv.className = "status success";
+    showStatusText("Connected. " + langs.length + " languages available.", false);
   } catch (e) {
-    statusDiv.textContent = "Connection failed: " + e.message;
-    statusDiv.className = "status error";
+    showStatusText("Connection failed: " + e.message, true);
   }
 });
 
 saveBtn.addEventListener("click", async () => {
   clearStatus();
 
-  const ollamaUrl = urlInput.value.trim();
-  const model = modelSelect.value;
+  const service      = getSelectedService();
+  const ollamaUrl    = urlInput.value.trim();
+  const model        = modelSelect.value;
   const ollamaApiKey = ollamaApiKeyInput.value.trim();
-  const libreUrl = libreUrlInput.value.trim();
-  const libreApiKey = libreApiKeyInput.value.trim();
+  const libreUrl     = libreUrlInput.value.trim();
+  const libreApiKey  = libreApiKeyInput.value.trim();
 
-  if (!ollamaUrl) {
-    showStatus("urlRequired", true);
-    return;
+  if (service === "ollama" && !ollamaUrl) {
+    showStatus("urlRequired", true); return;
+  }
+  if (service === "libretranslate" && !libreUrl) {
+    showStatus("urlRequired", true); return;
   }
 
-  await browser.runtime.sendMessage({ command: "saveSettings", ollamaUrl, model, ollamaApiKey, libreUrl, libreApiKey });
+  await browser.runtime.sendMessage({
+    command: "saveSettings",
+    ollamaUrl, model, ollamaApiKey,
+    libreUrl, libreApiKey, service,
+  });
+
   showStatus("settingsSaved", false);
 });
 

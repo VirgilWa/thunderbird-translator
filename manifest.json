@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Thunderbird Translator",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "description": "Translate emails using Ollama, Google Translate or LibreTranslate",
   "author": "jctots (fork of zoott28354)",
   "default_locale": "en",
@@ -19,19 +19,34 @@
     "compose",
     "storage",
     "tabs",
+    "menus",
     "*://*/*"
   ],
 
   "message_display_action": {
     "default_title": "Translate",
-    "default_icon": "icons/translate-48.png",
-    "default_popup": "popup/popup.html"
+    "default_icon": {
+      "48": "icons/translate-dark.svg",
+      "96": "icons/translate-dark.svg"
+    },
+    "theme_icons": [{
+      "light": "icons/translate-light.svg",
+      "dark":  "icons/translate-dark.svg",
+      "size": 48
+    }]
   },
 
   "compose_action": {
     "default_title": "Translate",
-    "default_icon": "icons/translate-48.png",
-    "default_popup": "popup/popup.html"
+    "default_icon": {
+      "48": "icons/translate-dark.svg",
+      "96": "icons/translate-dark.svg"
+    },
+    "theme_icons": [{
+      "light": "icons/translate-light.svg",
+      "dark":  "icons/translate-dark.svg",
+      "size": 48
+    }]
   },
 
   "background": {
@@ -43,7 +58,7 @@
   },
 
   "icons": {
-    "48": "icons/translate-48.png",
-    "96": "icons/translate-96.png"
+    "48": "icons/translate-dark.svg",
+    "96": "icons/translate-dark.svg"
   }
 }

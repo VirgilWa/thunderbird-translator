@@ -18,15 +18,48 @@
       color: #1a1a1a;
     }
 
-    h3 {
-      font-size: 14px;
-      font-weight: 600;
-      margin: 20px 0 12px;
-      padding-bottom: 4px;
-      border-bottom: 1px solid #e0e0e0;
-      color: #444;
+    /* Service section */
+    .service-section {
+      margin-bottom: 4px;
     }
 
+    .service-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #444;
+      padding: 8px 0 6px;
+      border-bottom: 1px solid #e0e0e0;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .service-header input[type="radio"] {
+      margin: 0;
+      cursor: pointer;
+      accent-color: #0060df;
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+    }
+
+    .service-config {
+      padding: 12px 0 4px 23px;
+    }
+
+    .privacy-note {
+      margin: 4px 0 8px;
+      font-size: 13px;
+      color: #856404;
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 4px;
+      padding: 8px 10px;
+    }
+
+    /* Fields */
     label {
       display: block;
       margin-bottom: 4px;
@@ -54,13 +87,45 @@
       color: #666;
     }
 
-    .button-row {
+    .input-row {
       display: flex;
       gap: 8px;
-      flex-wrap: wrap;
-      margin-bottom: 16px;
     }
 
+    .input-row input { flex: 1; }
+
+    /* Preferences section */
+    .prefs-section {
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid #e0e0e0;
+    }
+
+    .prefs-section h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #444;
+      margin: 0 0 14px;
+    }
+
+    .checkbox-field label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: normal;
+      cursor: pointer;
+    }
+
+    .checkbox-field input[type="checkbox"] {
+      width: 15px;
+      height: 15px;
+      margin: 0;
+      cursor: pointer;
+      accent-color: #0060df;
+      flex-shrink: 0;
+    }
+
+    /* Buttons */
     button {
       padding: 8px 16px;
       border: 1px solid #ccc;
@@ -70,9 +135,7 @@
       font-size: 13px;
     }
 
-    button:hover {
-      background: #e8e8e8;
-    }
+    button:hover { background: #e8e8e8; }
 
     button.primary {
       background: #0060df;
@@ -80,10 +143,16 @@
       border-color: #0060df;
     }
 
-    button.primary:hover {
-      background: #004ebc;
+    button.primary:hover { background: #004ebc; }
+
+    .button-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 20px;
     }
 
+    /* Status */
     .status {
       padding: 8px 12px;
       border-radius: 4px;
@@ -110,44 +179,70 @@
 <body>
   <h2 data-i18n="appName"></h2>
 
-  <h3>Ollama</h3>
-
-  <div class="field">
-    <label for="ollamaUrl" data-i18n="ollamaUrl"></label>
-    <input type="text" id="ollamaUrl" placeholder="http://localhost:11434">
-  </div>
-
-  <div class="field">
-    <label for="model" data-i18n="model"></label>
-    <div style="display: flex; gap: 8px;">
-      <select id="model" style="flex: 1;">
-        <option value="" data-i18n="selectModel"></option>
-      </select>
-      <button id="refreshModels" title-i18n="refresh">&#x21bb;</button>
+  <!-- Ollama -->
+  <div class="service-section">
+    <label class="service-header">
+      <input type="radio" name="service" value="ollama" id="radio-ollama">
+      Ollama
+    </label>
+    <div class="service-config">
+      <div class="field">
+        <label for="ollamaUrl" data-i18n="ollamaUrl"></label>
+        <input type="text" id="ollamaUrl" placeholder="http://localhost:11434">
+        <p class="field-hint">e.g. <code>http://localhost:11434</code> (local machine)<br>
+        or <code>https://ollama.yourhomelab.com</code> (private server)</p>
+      </div>
+      <div class="field">
+        <label for="model" data-i18n="model"></label>
+        <div class="input-row">
+          <select id="model">
+            <option value="" data-i18n="selectModel"></option>
+          </select>
+          <button id="refreshModels" title-i18n="refresh">&#x21bb;</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="ollamaApiKey">API Key <span style="font-weight:normal;color:#666">(optional)</span></label>
+        <div class="input-row">
+          <input type="text" id="ollamaApiKey" placeholder="Leave blank if not required">
+          <button id="testConnection" data-i18n="testConnection"></button>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="field">
-    <label for="ollamaApiKey">API Key <span style="font-weight:normal;color:#666">(optional)</span></label>
-    <div style="display:flex;gap:8px;">
-      <input type="text" id="ollamaApiKey" placeholder="Leave blank if not required" style="flex:1;">
-      <button id="testConnection" data-i18n="testConnection"></button>
+  <!-- LibreTranslate -->
+  <div class="service-section">
+    <label class="service-header">
+      <input type="radio" name="service" value="libretranslate" id="radio-libretranslate">
+      LibreTranslate
+    </label>
+    <div class="service-config">
+      <div class="field">
+        <label for="libreUrl">Server URL</label>
+        <input type="text" id="libreUrl" placeholder="https://libretranslate.yourhomelab.com">
+        <p class="field-hint">e.g. <code>https://libretranslate.yourhomelab.com</code> (private server)<br>
+        or <code>https://libretranslate.com</code> (public server)</p>
+      </div>
+      <p class="privacy-note">⚠ If using the public server (libretranslate.com), message content is sent to their servers.</p>
+      <div class="field">
+        <label for="libreApiKey">API Key <span style="font-weight:normal;color:#666">(optional)</span></label>
+        <div class="input-row">
+          <input type="text" id="libreApiKey" placeholder="Leave blank if not required">
+          <button id="testLibreConnection">Test Connection</button>
+        </div>
+      </div>
     </div>
   </div>
 
-  <h3>LibreTranslate</h3>
-
-  <div class="field">
-    <label for="libreUrl">Server URL</label>
-    <input type="text" id="libreUrl" placeholder="https://libretranslate.com">
-    <p class="field-hint">Base URL of your LibreTranslate instance. Public instances: <code>https://libretranslate.com</code></p>
-  </div>
-
-  <div class="field">
-    <label for="libreApiKey">API Key <span style="font-weight:normal;color:#666">(optional)</span></label>
-    <div style="display:flex;gap:8px;">
-      <input type="text" id="libreApiKey" placeholder="Leave blank if not required" style="flex:1;">
-      <button id="testLibreConnection">Test Connection</button>
+  <!-- Google Translate -->
+  <div class="service-section">
+    <label class="service-header">
+      <input type="radio" name="service" value="google" id="radio-google">
+      Google Translate
+    </label>
+    <div class="service-config">
+      <p class="privacy-note">⚠ No configuration required, but message content is sent to Google's servers.</p>
     </div>
   </div>
 

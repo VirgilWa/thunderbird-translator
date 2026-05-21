@@ -11,11 +11,44 @@ const LANGUAGE_NAMES = {
   es: "Español",
   fr: "Français",
   de: "Deutsch",
+  nl: "Nederlands",
   pt: "Português",
   ru: "Русский",
   ja: "日本語",
   zh: "中文",
   ko: "한국어",
+  ar: "العربية",
+  tr: "Türkçe",
+  pl: "Polski",
+};
+
+const LANGUAGES = [
+  { value: "en", label: "English" },
+  { value: "nl", label: "Nederlands" },
+  { value: "de", label: "Deutsch" },
+  { value: "fr", label: "Français" },
+  { value: "es", label: "Español" },
+  { value: "it", label: "Italiano" },
+  { value: "pt", label: "Português" },
+  { value: "ru", label: "Русский" },
+  { value: "ja", label: "日本語" },
+  { value: "zh", label: "中文" },
+  { value: "ko", label: "한국어" },
+  { value: "ar", label: "العربية" },
+  { value: "tr", label: "Türkçe" },
+  { value: "pl", label: "Polski" },
+];
+
+const LANG_STORAGE_KEY = {
+  ollama: "ollamaTargetLang",
+  google: "googleTargetLang",
+  libretranslate: "libreTargetLang",
+};
+
+const COMPOSE_LANG_KEY = {
+  ollama: "ollamaComposeLang",
+  google: "googleComposeLang",
+  libretranslate: "libreComposeLang",
 };
 
 // --- Settings ---
@@ -28,9 +61,13 @@ async function getSettings() {
     ollamaTargetLang: "en",
     googleTargetLang: "en",
     libreTargetLang: "en",
+    ollamaComposeLang: "en",
+    googleComposeLang: "en",
+    libreComposeLang: "en",
     libreUrl: DEFAULT_LIBRE_URL,
     ollamaApiKey: "",
     libreApiKey: "",
+    autoTranslate: false,
   });
 }
 
@@ -77,6 +114,20 @@ function sendToActivePort(command, extra = {}) {
     }, 30000);
     pendingPopupRequests.set(reqId, { resolve, reject, timeoutId });
     lastActivePort.postMessage({ command, reqId, ...extra });
+  });
+}
+
+function sendToTabPort(tabId, command, extra = {}) {
+  return new Promise((resolve, reject) => {
+    const port = portMap.get(tabId);
+    if (!port) { reject(new Error("No content script for this tab")); return; }
+    const reqId = nextPopupReqId++;
+    const timeoutId = setTimeout(() => {
+      pendingPopupRequests.delete(reqId);
+      reject(new Error("Content script timeout"));
+    }, 30000);
+    pendingPopupRequests.set(reqId, { resolve, reject, timeoutId });
+    port.postMessage({ command, reqId, ...extra });
   });
 }
 
@@ -145,7 +196,12 @@ messenger.runtime.onConnect.addListener((port) => {
           }
           const settings = await getSettings();
           const translated = await translateText(subject, settings);
-          port.postMessage({ id: message.id, success: true, translated });
+          const SERVICE_LABELS = { ollama: "Ollama", google: "Google Translate", libretranslate: "LibreTranslate" };
+          const serviceLabel = SERVICE_LABELS[settings.service] || settings.service;
+          const serviceUrl = settings.service === "ollama" ? settings.ollamaUrl
+            : settings.service === "libretranslate" ? settings.libreUrl
+            : null;
+          port.postMessage({ id: message.id, success: true, translated, serviceLabel, serviceUrl });
         } catch (e) {
           port.postMessage({ id: message.id, success: false, error: e.message });
         }
@@ -188,11 +244,13 @@ messenger.runtime.onConnect.addListener((port) => {
     });
 
     port.onMessage.addListener(async (message) => {
-      // Translate API request
+      // Translate API request — use compose-specific target language
       if (message.command === "translate") {
         try {
           const settings = await getSettings();
-          const translated = await translateText(message.text, settings);
+          const composeLangKey = COMPOSE_LANG_KEY[settings.service] || "googleComposeLang";
+          const targetLang = settings[composeLangKey] || "en";
+          const translated = await translateText(message.text, settings, targetLang);
           port.postMessage({ id: message.id, success: true, translated });
         } catch (e) {
           port.postMessage({ id: message.id, success: false, error: e.message });
@@ -276,12 +334,14 @@ async function translateWithLibreTranslate(text, targetLanguage, libreUrl, libre
   throw new Error("Invalid response from LibreTranslate");
 }
 
-async function translateText(text, settings) {
+async function translateText(text, settings, targetLangOverride) {
   const { service, ollamaTargetLang, googleTargetLang, libreTargetLang, libreUrl, libreApiKey } = settings;
-  const targetLang = { ollama: ollamaTargetLang, google: googleTargetLang, libretranslate: libreTargetLang }[service] || "en";
+  const targetLang = targetLangOverride
+    || { ollama: ollamaTargetLang, google: googleTargetLang, libretranslate: libreTargetLang }[service]
+    || "en";
   switch (service) {
-    case "ollama":        return translateWithOllama(text, { ...settings, targetLanguage: targetLang });
-    case "google":        return translateWithGoogle(text, targetLang);
+    case "ollama":         return translateWithOllama(text, { ...settings, targetLanguage: targetLang });
+    case "google":         return translateWithGoogle(text, targetLang);
     case "libretranslate": return translateWithLibreTranslate(text, targetLang, libreUrl, libreApiKey);
     default: throw new Error(`Unknown service: ${service}`);
   }
@@ -292,6 +352,144 @@ async function getInstalledModels(ollamaUrl) {
   if (!response.ok) throw new Error(`Ollama error: ${response.status}`);
   return (await response.json()).models.map(m => m.name);
 }
+
+// --- Context menu (right-click on toolbar button) ---
+
+browser.menus.create({
+  id: "auto-translate",
+  title: "Auto-translate",
+  type: "checkbox",
+  checked: false,
+  contexts: ["message_display_action"],
+});
+
+browser.menus.create({
+  id: "sep-1",
+  type: "separator",
+  contexts: ["message_display_action"],
+});
+
+browser.menus.create({
+  id: "translate-to",
+  title: "Translate to",
+  contexts: ["message_display_action", "compose_action"],
+});
+
+for (const lang of LANGUAGES) {
+  browser.menus.create({
+    id: `lang-${lang.value}`,
+    parentId: "translate-to",
+    title: lang.label,
+    type: "radio",
+    checked: lang.value === "en",
+    contexts: ["message_display_action", "compose_action"],
+  });
+}
+
+// Refresh state from storage every time the menu opens
+browser.menus.onShown.addListener(async (info) => {
+  const isRead    = info.contexts.includes("message_display_action");
+  const isCompose = info.contexts.includes("compose_action");
+  if (!isRead && !isCompose) return;
+
+  const settings = await messenger.storage.local.get({
+    autoTranslate: false,
+    service: DEFAULT_SERVICE,
+    ollamaTargetLang: "en",
+    googleTargetLang: "en",
+    libreTargetLang: "en",
+    ollamaComposeLang: "en",
+    googleComposeLang: "en",
+    libreComposeLang: "en",
+  });
+
+  if (isRead) {
+    await browser.menus.update("auto-translate", { checked: settings.autoTranslate });
+  }
+
+  const keyMap  = isCompose ? COMPOSE_LANG_KEY : LANG_STORAGE_KEY;
+  const langKey = keyMap[settings.service] || (isCompose ? "googleComposeLang" : "googleTargetLang");
+  const activeLang = settings[langKey] || "en";
+  for (const lang of LANGUAGES) {
+    await browser.menus.update(`lang-${lang.value}`, { checked: lang.value === activeLang });
+  }
+
+  browser.menus.refresh();
+});
+
+// Handle clicks
+browser.menus.onClicked.addListener(async (info) => {
+  if (info.menuItemId === "auto-translate") {
+    await messenger.storage.local.set({ autoTranslate: info.checked });
+    return;
+  }
+  if (String(info.menuItemId).startsWith("lang-")) {
+    const lang = info.menuItemId.replace("lang-", "");
+    const { service } = await messenger.storage.local.get({ service: DEFAULT_SERVICE });
+    const isCompose = info.contexts?.includes("compose_action");
+    const keyMap  = isCompose ? COMPOSE_LANG_KEY : LANG_STORAGE_KEY;
+    const langKey = keyMap[service] || (isCompose ? "googleComposeLang" : "googleTargetLang");
+    await messenger.storage.local.set({ [langKey]: lang });
+  }
+});
+
+// --- messageDisplayAction toggle (read pane) ---
+
+messenger.messageDisplayAction.onClicked.addListener(async (tab) => {
+  const tabId = tab.id;
+
+  messenger.messageDisplayAction.setBadgeText({ tabId, text: "..." });
+  messenger.messageDisplayAction.setBadgeBackgroundColor({ tabId, color: "#f90" });
+
+  try {
+    const state = await sendToTabPort(tabId, "getState");
+
+    if (state.isTranslated) {
+      await sendToTabPort(tabId, "doRevert");
+      messenger.messageDisplayAction.setBadgeText({ tabId, text: "" });
+    } else {
+      const result = await sendToTabPort(tabId, "doTranslate");
+      if (result.success) {
+        messenger.messageDisplayAction.setBadgeText({ tabId, text: "✓" });
+        messenger.messageDisplayAction.setBadgeBackgroundColor({ tabId, color: "#1a7f37" });
+        setTimeout(() => messenger.messageDisplayAction.setBadgeText({ tabId, text: "" }), 2000);
+      } else {
+        messenger.messageDisplayAction.setBadgeText({ tabId, text: "!" });
+        messenger.messageDisplayAction.setBadgeBackgroundColor({ tabId, color: "#c00" });
+      }
+    }
+  } catch (e) {
+    console.error("[Translator] onClicked error:", e.message);
+    messenger.messageDisplayAction.setBadgeText({ tabId, text: "!" });
+    messenger.messageDisplayAction.setBadgeBackgroundColor({ tabId, color: "#c00" });
+  }
+});
+
+// --- composeAction direct translate (compose pane) ---
+
+messenger.composeAction.onClicked.addListener(async (tab) => {
+  const tabId    = tab.id;
+  const windowId = tab.windowId;
+
+  messenger.composeAction.setBadgeText({ tabId, text: "..." });
+  messenger.composeAction.setBadgeBackgroundColor({ tabId, color: "#f90" });
+
+  try {
+    const result = await sendToComposePort(windowId, "doTranslateSelection");
+    if (result.success) {
+      messenger.composeAction.setBadgeText({ tabId, text: "✓" });
+      messenger.composeAction.setBadgeBackgroundColor({ tabId, color: "#1a7f37" });
+      setTimeout(() => messenger.composeAction.setBadgeText({ tabId, text: "" }), 2000);
+    } else {
+      messenger.composeAction.setBadgeText({ tabId, text: "!" });
+      messenger.composeAction.setBadgeBackgroundColor({ tabId, color: "#c00" });
+    }
+  } catch (e) {
+    console.error("[Translator] compose onClicked error:", e.message);
+    messenger.composeAction.setBadgeText({ tabId, text: "!" });
+    messenger.composeAction.setBadgeBackgroundColor({ tabId, color: "#c00" });
+  }
+});
 
 // --- Message handler (options page + popup) ---
 
@@ -310,9 +508,12 @@ messenger.runtime.onMessage.addListener(async (message) => {
   }
   if (message.command === "saveSettings") {
     await messenger.storage.local.set({
-      ollamaUrl: message.ollamaUrl, model: message.model,
+      ollamaUrl:    message.ollamaUrl,
+      model:        message.model,
       ollamaApiKey: message.ollamaApiKey,
-      libreUrl: message.libreUrl, libreApiKey: message.libreApiKey,
+      libreUrl:     message.libreUrl,
+      libreApiKey:  message.libreApiKey,
+      service:      message.service,
     });
     return { success: true };
   }
