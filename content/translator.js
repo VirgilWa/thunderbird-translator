@@ -22,6 +22,7 @@
   const nodeMap = new Map();
   let isTranslated = false;
   let translationCached = false;
+  let cachedLang = null;
   let translatedSubject = null;
   let subjectBar = null;
 
@@ -52,7 +53,7 @@
 
     // Commands from popup (via background)
     if (message.command === "doTranslate") {
-      const result = await startTranslation();
+      const result = await startTranslation(message.targetLang || null);
       port.postMessage({ command: "translateDone", reqId: message.reqId, isTranslated, ...result });
       return;
     }
@@ -271,7 +272,16 @@
     }
   }
 
-  async function startTranslation() {
+  async function startTranslation(targetLang) {
+    // Invalidate cache if language changed
+    if (targetLang && targetLang !== cachedLang) {
+      translationCached = false;
+      translatedSubject = null;
+      for (const [node, data] of nodeMap.entries()) {
+        nodeMap.set(node, { original: data.original, translated: null });
+      }
+    }
+
     // Use cache if available
     if (translationCached && nodeMap.size > 0) {
       for (const [node, data] of nodeMap.entries()) {
@@ -303,6 +313,7 @@
 
       isTranslated = true;
       translationCached = true;
+      if (targetLang) cachedLang = targetLang;
 
       if (translatedSubject?.translated) injectSubjectBar(translatedSubject);
 

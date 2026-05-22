@@ -22,6 +22,8 @@ const testBtn           = document.getElementById("testConnection");
 const testLibreBtn      = document.getElementById("testLibreConnection");
 const saveBtn           = document.getElementById("save");
 const statusDiv         = document.getElementById("status");
+const ollamaTestStatus  = document.getElementById("ollamaTestStatus");
+const libreTestStatus   = document.getElementById("libreTestStatus");
 const serviceRadios     = document.querySelectorAll("input[name='service']");
 
 // --- Status ---
@@ -127,23 +129,26 @@ refreshBtn.addEventListener("click", async () => {
   showStatus("modelsRefreshed", false);
 });
 
+function showInlineStatus(el, text, isError) {
+  el.textContent = text;
+  el.className = "status " + (isError ? "error" : "success");
+}
+
 testBtn.addEventListener("click", async () => {
-  clearStatus();
   const url = urlInput.value.trim();
-  if (!url) { showStatus("urlRequired", true); return; }
+  if (!url) { showInlineStatus(ollamaTestStatus, browser.i18n.getMessage("urlRequired") || "URL required", true); return; }
   const result = await browser.runtime.sendMessage({ command: "testConnection", ollamaUrl: url });
   if (result.success) {
-    showStatus("connectionSuccess", false, { count: result.models.length });
+    showInlineStatus(ollamaTestStatus, (browser.i18n.getMessage("connectionSuccess", [result.models.length]) || `Connected. ${result.models.length} models available.`), false);
     await loadModels(modelSelect.value, url);
   } else {
-    showStatus("connectionFailed", true, { error: result.error });
+    showInlineStatus(ollamaTestStatus, (browser.i18n.getMessage("connectionFailed", [result.error]) || `Connection failed: ${result.error}`), true);
   }
 });
 
 testLibreBtn.addEventListener("click", async () => {
-  clearStatus();
   const url = libreUrlInput.value.trim();
-  if (!url) { showStatus("urlRequired", true); return; }
+  if (!url) { showInlineStatus(libreTestStatus, browser.i18n.getMessage("urlRequired") || "URL required", true); return; }
   try {
     const base = url.replace(/\/+$/, "").replace(/\/translate$/, "");
     const apiKey = libreApiKeyInput.value.trim();
@@ -152,9 +157,9 @@ testLibreBtn.addEventListener("click", async () => {
     if (!resp.ok) throw new Error("HTTP " + resp.status + " " + resp.statusText);
     const langs = await resp.json();
     if (!Array.isArray(langs)) throw new Error("Unexpected response format");
-    showStatusText("Connected. " + langs.length + " languages available.", false);
+    showInlineStatus(libreTestStatus, "Connected. " + langs.length + " languages available.", false);
   } catch (e) {
-    showStatusText("Connection failed: " + e.message, true);
+    showInlineStatus(libreTestStatus, "Connection failed: " + e.message, true);
   }
 });
 

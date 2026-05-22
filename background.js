@@ -20,6 +20,7 @@ const LANGUAGE_NAMES = {
   ar: "العربية",
   tr: "Türkçe",
   pl: "Polski",
+  tl: "Filipino",
 };
 
 const LANGUAGES = [
@@ -37,6 +38,7 @@ const LANGUAGES = [
   { value: "ar", label: "العربية" },
   { value: "tr", label: "Türkçe" },
   { value: "pl", label: "Polski" },
+  { value: "tl", label: "Filipino" },
 ];
 
 const LANG_STORAGE_KEY = {
@@ -505,7 +507,9 @@ messenger.messageDisplayAction.onClicked.addListener(async (tab) => {
       await sendToTabPort(tabId, "doRevert");
       messenger.messageDisplayAction.setBadgeText({ tabId, text: "" });
     } else {
-      const result = await sendToTabPort(tabId, "doTranslate");
+      const settings = await getSettings();
+      const targetLang = { ollama: settings.ollamaTargetLang, google: settings.googleTargetLang, libretranslate: settings.libreTargetLang }[settings.service] || "en";
+      const result = await sendToTabPort(tabId, "doTranslate", { targetLang });
       if (result.success) {
         messenger.messageDisplayAction.setBadgeText({ tabId, text: "✓" });
         messenger.messageDisplayAction.setBadgeBackgroundColor({ tabId, color: "#1a7f37" });
@@ -563,7 +567,7 @@ messenger.runtime.onMessage.addListener(async (message) => {
       return { success: true, models: await getInstalledModels(message.ollamaUrl) };
     } catch (e) { return { success: false, error: e.message }; }
   }
-  if (message.command === "saveSettings") {
+if (message.command === "saveSettings") {
     await messenger.storage.local.set({
       ollamaUrl:    message.ollamaUrl,
       model:        message.model,
@@ -575,25 +579,5 @@ messenger.runtime.onMessage.addListener(async (message) => {
     updateReadButtonTitle();
     updateComposeButtonTitle();
     return { success: true };
-  }
-
-  // Popup — read mode
-  if (message.command === "popupGetState") {
-    try { return await sendToActivePort("getState"); }
-    catch (e) { return { success: false, isTranslated: false, error: e.message }; }
-  }
-  if (message.command === "popupTranslate") {
-    try { return await sendToActivePort("doTranslate"); }
-    catch (e) { return { success: false, error: e.message }; }
-  }
-  if (message.command === "popupRevert") {
-    try { return await sendToActivePort("doRevert"); }
-    catch (e) { return { success: false, error: e.message }; }
-  }
-
-  // Popup — compose mode
-  if (message.command === "popupTranslateSelection") {
-    try { return await sendToComposePort(message.windowId, "doTranslateSelection"); }
-    catch (e) { return { success: false, error: e.message }; }
   }
 });
