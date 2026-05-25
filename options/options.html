@@ -68,13 +68,20 @@
     }
 
     input[type="text"],
-    select {
+    select,
+    textarea {
       width: 100%;
       padding: 8px 10px;
       border: 1px solid #ccc;
       border-radius: 4px;
       font-size: 14px;
       box-sizing: border-box;
+    }
+
+    textarea {
+      font-family: "Cascadia Code", "Fira Mono", "Consolas", monospace;
+      font-size: 12px;
+      resize: vertical;
     }
 
     .field {
@@ -92,7 +99,8 @@
       gap: 8px;
     }
 
-    .input-row input { flex: 1; }
+    .input-row input,
+    .input-row select { flex: 1; }
 
     /* Preferences section */
     .prefs-section {
@@ -174,6 +182,37 @@
       color: #721c24;
       border: 1px solid #f5c6cb;
     }
+
+    /* Collapsible advanced section */
+    details.advanced-section {
+      margin-top: 8px;
+      margin-bottom: 8px;
+    }
+
+    details.advanced-section summary {
+      font-size: 12px;
+      font-weight: 600;
+      color: #555;
+      cursor: pointer;
+      user-select: none;
+      padding: 4px 0;
+      list-style: disclosure-closed;
+    }
+
+    details.advanced-section[open] summary {
+      list-style: disclosure-open;
+      margin-bottom: 12px;
+    }
+
+    details.advanced-section summary:hover {
+      color: #0060df;
+    }
+
+    .advanced-content {
+      padding-left: 4px;
+      border-left: 2px solid #e0e0e0;
+      padding-left: 12px;
+    }
   </style>
 </head>
 <body>
@@ -193,7 +232,7 @@
         or <code>https://ollama.yourhomelab.com</code> (private server)</p>
       </div>
       <div class="field">
-        <label for="model" data-i18n="model"></label>
+        <label for="model">Translate Model</label>
         <div class="input-row">
           <select id="model">
             <option value="" data-i18n="selectModel"></option>
@@ -202,6 +241,16 @@
         </div>
       </div>
       <div class="field">
+        <label for="detectionModel">Detection Model <span style="font-weight:normal;color:#666">(optional — defaults to Translate Model)</span></label>
+        <div class="input-row">
+          <select id="detectionModel">
+            <option value="">Same as Translate Model</option>
+          </select>
+          <button id="refreshDetectionModels" title-i18n="refresh">&#x21bb;</button>
+        </div>
+        <p class="field-hint">Used only for auto-translate language detection (Never/Always auto-translate). Leave blank to use the same model as translation.</p>
+      </div>
+<div class="field">
         <label for="ollamaApiKey">API Key <span style="font-weight:normal;color:#666">(optional)</span></label>
         <div class="input-row">
           <input type="text" id="ollamaApiKey" placeholder="Leave blank if not required">
@@ -209,6 +258,23 @@
         </div>
         <div id="ollamaTestStatus" class="status"></div>
       </div>
+
+      <!-- Advanced: custom prompts -->
+      <details class="advanced-section">
+        <summary>Advanced: custom prompts</summary>
+        <div class="advanced-content">
+          <div class="field">
+            <label for="ollamaTranslatePrompt">Translation prompt</label>
+            <textarea id="ollamaTranslatePrompt" rows="7" placeholder="Leave blank to use the built-in default"></textarea>
+            <p class="field-hint">Variables: <code>{TEXT}</code> (email content), <code>{TARGET_LANG}</code> (e.g. "English"), <code>{TARGET_CODE}</code> (e.g. "EN"), <code>{SOURCE_LANG}</code> (source language name, if known), <code>{SOURCE_CODE}</code> (source code, if known). Clear field to restore default.</p>
+          </div>
+          <div class="field">
+            <label for="ollamaDetectPrompt">Detection prompt</label>
+            <textarea id="ollamaDetectPrompt" rows="6" placeholder="Leave blank to use the built-in default"></textarea>
+            <p class="field-hint">Used for language detection (Never/Always auto-translate). Variable: <code>{TEXT}</code> (sample of email content). Model must reply with a 2-letter ISO 639-1 code. Clear field to restore default.</p>
+          </div>
+        </div>
+      </details>
     </div>
   </div>
 

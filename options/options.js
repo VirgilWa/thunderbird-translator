@@ -1,5 +1,21 @@
 "use strict";
 
+// Keep in sync with DEFAULT_TRANSLATE_PROMPT in background.js
+const DEFAULT_TRANSLATE_PROMPT =
+`You are a professional {SOURCE_LANG} ({SOURCE_CODE}) to {TARGET_LANG} ({TARGET_CODE}) translator. Your goal is to accurately convey the meaning and nuances of the original {SOURCE_LANG} text while adhering to {TARGET_LANG} grammar, vocabulary, and cultural sensitivities.
+Produce only the {TARGET_LANG} translation, without any additional explanations or commentary. Please translate the following {SOURCE_LANG} text into {TARGET_LANG}:
+
+{TEXT}`;
+
+// Keep in sync with DEFAULT_DETECT_PROMPT in background.js
+const DEFAULT_DETECT_PROMPT =
+`Identify the language of the following text. Reply with ONLY the ISO 639-1 two-letter language code.
+Examples: "en" for English, "tl" for Filipino/Tagalog, "fr" for French, "de" for German,
+"es" for Spanish, "ja" for Japanese, "zh" for Chinese, "ko" for Korean, "ar" for Arabic.
+No explanation. Just the two-letter code.
+
+Text: {TEXT}`;
+
 function translatePage() {
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const key = el.getAttribute("data-i18n");
@@ -12,29 +28,28 @@ function translatePage() {
 }
 
 // --- Element refs ---
-const urlInput          = document.getElementById("ollamaUrl");
-const modelSelect       = document.getElementById("model");
-const ollamaApiKeyInput = document.getElementById("ollamaApiKey");
-const libreUrlInput     = document.getElementById("libreUrl");
-const libreApiKeyInput  = document.getElementById("libreApiKey");
-const refreshBtn        = document.getElementById("refreshModels");
-const testBtn           = document.getElementById("testConnection");
-const testLibreBtn      = document.getElementById("testLibreConnection");
-const saveBtn           = document.getElementById("save");
-const statusDiv         = document.getElementById("status");
-const ollamaTestStatus  = document.getElementById("ollamaTestStatus");
-const libreTestStatus   = document.getElementById("libreTestStatus");
-const serviceRadios     = document.querySelectorAll("input[name='service']");
+const urlInput                = document.getElementById("ollamaUrl");
+const modelSelect             = document.getElementById("model");
+const detectionModelSelect    = document.getElementById("detectionModel");
+const ollamaApiKeyInput       = document.getElementById("ollamaApiKey");
+const libreUrlInput           = document.getElementById("libreUrl");
+const libreApiKeyInput        = document.getElementById("libreApiKey");
+const refreshBtn              = document.getElementById("refreshModels");
+const refreshDetectionBtn     = document.getElementById("refreshDetectionModels");
+const testBtn                 = document.getElementById("testConnection");
+const testLibreBtn            = document.getElementById("testLibreConnection");
+const saveBtn                 = document.getElementById("save");
+const statusDiv               = document.getElementById("status");
+const ollamaTestStatus        = document.getElementById("ollamaTestStatus");
+const libreTestStatus         = document.getElementById("libreTestStatus");
+const serviceRadios           = document.querySelectorAll("input[name='service']");
+const ollamaTranslatePromptTA = document.getElementById("ollamaTranslatePrompt");
+const ollamaDetectPromptTA    = document.getElementById("ollamaDetectPrompt");
 
 // --- Status ---
 function showStatus(messageKey, isError, replacements = {}) {
   const message = browser.i18n.getMessage(messageKey, Object.values(replacements));
   statusDiv.textContent = message || messageKey;
-  statusDiv.className = "status " + (isError ? "error" : "success");
-}
-
-function showStatusText(text, isError) {
-  statusDiv.textContent = text;
   statusDiv.className = "status " + (isError ? "error" : "success");
 }
 
@@ -62,19 +77,25 @@ async function loadSettings() {
   const settings = await browser.storage.local.get({
     ollamaUrl: "http://localhost:11434",
     model: "",
+    detectionModel: "",
     ollamaApiKey: "",
     libreUrl: "https://libretranslate.com",
     libreApiKey: "",
     service: "google",
+    ollamaTranslatePrompt: "",
+    ollamaDetectPrompt: "",
   });
 
   urlInput.value = settings.ollamaUrl;
   ollamaApiKeyInput.value = settings.ollamaApiKey;
   libreUrlInput.value = settings.libreUrl;
   libreApiKeyInput.value = settings.libreApiKey;
+  ollamaTranslatePromptTA.value = settings.ollamaTranslatePrompt || DEFAULT_TRANSLATE_PROMPT;
+  ollamaDetectPromptTA.value    = settings.ollamaDetectPrompt    || DEFAULT_DETECT_PROMPT;
   setSelectedService(settings.service);
 
   await loadModels(settings.model);
+  await loadDetectionModels(settings.detectionModel);
 }
 
 // --- Models ---
@@ -123,9 +144,50 @@ async function loadModels(selectedModel, ollamaUrl) {
   }
 }
 
+// --- Detection Models ---
+async function loadDetectionModels(selectedModel, ollamaUrl) {
+  const result = await browser.runtime.sendMessage({ command: "getModels", ollamaUrl });
+
+  // Keep the "Same as Translate Model" blank option, then populate the rest
+  detectionModelSelect.innerHTML = '<option value="">Same as Translate Model</option>';
+
+  if (!result.success) {
+    if (selectedModel) {
+      const saved = document.createElement("option");
+      saved.value = selectedModel;
+      saved.textContent = selectedModel + " " + browser.i18n.getMessage("saved");
+      saved.selected = true;
+      detectionModelSelect.appendChild(saved);
+    }
+    return;
+  }
+
+  for (const name of result.models) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    if (name === selectedModel) opt.selected = true;
+    detectionModelSelect.appendChild(opt);
+  }
+
+  if (selectedModel && !result.models.includes(selectedModel) && selectedModel !== "") {
+    const saved = document.createElement("option");
+    saved.value = selectedModel;
+    saved.textContent = selectedModel + " " + browser.i18n.getMessage("notFound");
+    saved.selected = true;
+    detectionModelSelect.prepend(saved);
+  }
+}
+
 refreshBtn.addEventListener("click", async () => {
   clearStatus();
   await loadModels(modelSelect.value, urlInput.value.trim());
+  showStatus("modelsRefreshed", false);
+});
+
+refreshDetectionBtn.addEventListener("click", async () => {
+  clearStatus();
+  await loadDetectionModels(detectionModelSelect.value, urlInput.value.trim());
   showStatus("modelsRefreshed", false);
 });
 
@@ -141,6 +203,7 @@ testBtn.addEventListener("click", async () => {
   if (result.success) {
     showInlineStatus(ollamaTestStatus, (browser.i18n.getMessage("connectionSuccess", [result.models.length]) || `Connected. ${result.models.length} models available.`), false);
     await loadModels(modelSelect.value, url);
+    await loadDetectionModels(detectionModelSelect.value, url);
   } else {
     showInlineStatus(ollamaTestStatus, (browser.i18n.getMessage("connectionFailed", [result.error]) || `Connection failed: ${result.error}`), true);
   }
@@ -166,12 +229,15 @@ testLibreBtn.addEventListener("click", async () => {
 saveBtn.addEventListener("click", async () => {
   clearStatus();
 
-  const service      = getSelectedService();
-  const ollamaUrl    = urlInput.value.trim();
-  const model        = modelSelect.value;
-  const ollamaApiKey = ollamaApiKeyInput.value.trim();
-  const libreUrl     = libreUrlInput.value.trim();
-  const libreApiKey  = libreApiKeyInput.value.trim();
+  const service             = getSelectedService();
+  const ollamaUrl           = urlInput.value.trim();
+  const model               = modelSelect.value;
+  const detectionModel      = detectionModelSelect.value;
+  const ollamaApiKey        = ollamaApiKeyInput.value.trim();
+  const libreUrl            = libreUrlInput.value.trim();
+  const libreApiKey         = libreApiKeyInput.value.trim();
+  const ollamaTranslatePrompt = ollamaTranslatePromptTA.value.trim();
+  const ollamaDetectPrompt    = ollamaDetectPromptTA.value.trim();
 
   if (service === "ollama" && !ollamaUrl) {
     showStatus("urlRequired", true); return;
@@ -182,8 +248,9 @@ saveBtn.addEventListener("click", async () => {
 
   await browser.runtime.sendMessage({
     command: "saveSettings",
-    ollamaUrl, model, ollamaApiKey,
+    ollamaUrl, model, detectionModel, ollamaApiKey,
     libreUrl, libreApiKey, service,
+    ollamaTranslatePrompt, ollamaDetectPrompt,
   });
 
   showStatus("settingsSaved", false);

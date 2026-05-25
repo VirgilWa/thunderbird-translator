@@ -170,6 +170,27 @@ Highlight text in the compose body *before* clicking the Translate button in the
 
 ## 📜 Changelog
 
+### v1.8.2 (fork — jctots)
+- **Never/Always auto-translate toggle** — context menu item shows the detected source language and lets you toggle it into the exemption list; updates dynamically per email; shows "Detecting language…" while translation is in progress
+- **Language exemptions for auto-translate** — emails in excluded languages are translated first, source language is detected, then the translation is silently reverted if the language is on the never-translate list
+- **Separate detection model** — Ollama uses a dedicated detection model and prompt (defaults to the translation model); configurable separately in Options
+- **Custom translation and detection prompts** — both prompts are editable in the Advanced section of Options; support `{TEXT}`, `{TARGET_LANG}`, `{TARGET_CODE}`, `{SOURCE_LANG}`, `{SOURCE_CODE}` variables; clear to restore built-in defaults
+- **Translate Model / Detection Model labels** — renamed "Model" field to "Translate Model" to distinguish from the new Detection Model field
+- **Toggle disabled during translation** — Never/Always auto-translate button is grayed out while auto-translate is running; re-enables once detection is complete
+
+### v1.8.1 (fork — jctots)
+- Per-service language menus (read and compose independently)
+- Translation cache invalidated when target language changes
+- Inline status messages on Options page (replaces alert popups)
+- Dead popup code removed
+
+### v1.8.0 (fork — jctots)
+- Right-click context menu on toolbar button (read and compose)
+- Direct toggle UX — translate/restore without a popup
+- Per-service target language — each service remembers its own language choice
+- SVG icons (dark and light variants)
+- Target language shown in toolbar button title
+
 ### v1.7.1 (fork — jctots)
 - **Translated subject bar** — sticky bar at the top of the email body showing the translated subject; respects dark mode; removed on revert
 

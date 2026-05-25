@@ -30,11 +30,20 @@
 
   const port = browser.runtime.connect({ name: "translator" });
   const pendingRequests        = new Map(); // text translate requests
-  const subjectPendingRequests = new Map(); // subject translate requests (return full info object)
+  const subjectPendingRequests = new Map(); // subject translate requests
+  const exemptionPendingRequests = new Map(); // exemption check requests
   let nextRequestId = 0;
 
   port.onMessage.addListener(async (message) => {
-    // Subject translate response — resolve with full info object
+    // Exemption check response
+    if (message.id != null && exemptionPendingRequests.has(message.id)) {
+      const { resolve, reject } = exemptionPendingRequests.get(message.id);
+      exemptionPendingRequests.delete(message.id);
+      if (message.success) resolve({ shouldRevert: message.shouldRevert });
+      else reject(new Error(message.error));
+      return;
+    }
+    // Subject translate response
     if (message.id != null && subjectPendingRequests.has(message.id)) {
       const { resolve, reject } = subjectPendingRequests.get(message.id);
       subjectPendingRequests.delete(message.id);
@@ -81,6 +90,14 @@
       const id = nextRequestId++;
       subjectPendingRequests.set(id, { resolve, reject });
       port.postMessage({ command: "getTranslatedSubject", id });
+    });
+  }
+
+  function sendCheckExemptionRequest() {
+    return new Promise((resolve, reject) => {
+      const id = nextRequestId++;
+      exemptionPendingRequests.set(id, { resolve, reject });
+      port.postMessage({ command: "checkExemption", id });
     });
   }
 
@@ -341,8 +358,25 @@
   // Auto-translate on load if setting is enabled
   browser.storage.local.get({ autoTranslate: false }).then(async (s) => {
     if (!s.autoTranslate) return;
+
     port.postMessage({ command: "setBadge" });
     const result = await startTranslation();
+
+    if (result.success) {
+      // After translation, check if the detected source language is in the never-translate list.
+      // The detected lang is cached in background from the translation API response.
+      try {
+        const { shouldRevert } = await sendCheckExemptionRequest();
+        if (shouldRevert) {
+          reloadPage();
+          port.postMessage({ command: "clearBadge", success: true });
+          return;
+        }
+      } catch (e) {
+        console.warn("[Translator] Exemption check failed, keeping translation:", e.message);
+      }
+    }
+
     port.postMessage({ command: "clearBadge", success: result.success, error: result.error });
   });
 
