@@ -17,7 +17,7 @@
 - 🔒 **Privacy-first** — translate on your own machine or private network; your emails stay under your control
 - 🏠 **Ollama** — local or self-hosted; zero external connections, works fully offline
 - 🖥️ **LibreTranslate** — self-hosted on your own server, or use a public instance
-- 🌐 **Google Translate** — available as a fallback when privacy is not a concern
+- 🌐 **Google Translate** — zero-config fallback only; email text is sent to Google's servers. **Not suitable for private or sensitive emails** — use Ollama or LibreTranslate instead
 - 🤖 **Supports all Ollama models** — translategemma, Llama, Mistral, and more
 - 📨 **Translate received emails** — inline replacement with one-click restore
 - ✍️ **Translate while composing** — select text in the compose window and translate it in place
@@ -52,6 +52,8 @@
 ---
 
 ## ⚙️ Configuration
+
+> **Default service is Google Translate.** On a fresh install, email text is sent to Google's servers until you configure Ollama or LibreTranslate. If you are translating private or sensitive emails, set up one of those services first and switch the active service in Preferences.
 
 Open **Menu → Tools → Add-ons → Thunderbird Translator → Preferences**.
 
@@ -150,6 +152,21 @@ No tracking, no analytics. API keys and settings are stored locally in Thunderbi
 
 ---
 
+## 🔍 Verifying privacy
+
+When using Ollama or LibreTranslate, you can confirm no email text leaves your network:
+
+1. In Thunderbird, right-click the toolbar and open **Developer Tools**, or go to **Tools → Developer Tools**
+2. Select the **Network** tab
+3. Translate an email
+4. Inspect the requests — you should see only traffic to your configured URL (e.g. `http://localhost:11434` or your homelab IP); nothing to `google.com` or any external service
+
+The extension's full source is on GitHub. All translation calls are in [`background.js`](background.js) — three `fetch()` call sites: `translateWithOllama()`, `translateWithGoogle()`, and `translateWithLibreTranslate()`, routed by a single `switch` in `translateText()`. There are no background network calls, analytics, or telemetry.
+
+> **Note:** this only applies when Ollama or LibreTranslate is the active service. Google Translate always contacts Google's servers — see the [Security](#-security) table.
+
+---
+
 ## 🚨 Troubleshooting
 
 ### "Error: Ollama error: 403 Forbidden"
@@ -169,6 +186,12 @@ Highlight text in the compose body *before* clicking the Translate button in the
 ---
 
 ## 📜 Changelog
+
+### v1.8.3 (fork — jctots)
+- **Prompt injection mitigation** — Ollama translate and detect prompts now XML-escape email content before substitution; default prompts wrap the text in `<text>` tags to separate instruction from data
+- **Badge lifecycle fix** — `...` badge now correctly cleared when navigating to a new email before translation completes
+- **Race condition guard** — concurrent translate calls (double-click, rapid button press) are now blocked until the current translation finishes
+- **Port cleanup** — pending requests reject immediately on content script disconnect instead of waiting for the 30-second timeout
 
 ### v1.8.2 (fork — jctots)
 - **Never/Always auto-translate toggle** — context menu item shows the detected source language and lets you toggle it into the exemption list; updates dynamically per email; shows "Detecting language…" while translation is in progress

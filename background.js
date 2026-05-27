@@ -7,9 +7,9 @@ const DEFAULT_LIBRE_URL = "https://libretranslate.com";
 
 const DEFAULT_TRANSLATE_PROMPT =
 `You are a professional {SOURCE_LANG} ({SOURCE_CODE}) to {TARGET_LANG} ({TARGET_CODE}) translator. Your goal is to accurately convey the meaning and nuances of the original {SOURCE_LANG} text while adhering to {TARGET_LANG} grammar, vocabulary, and cultural sensitivities.
-Produce only the {TARGET_LANG} translation, without any additional explanations or commentary. Please translate the following {SOURCE_LANG} text into {TARGET_LANG}:
+Produce only the {TARGET_LANG} translation, without any additional explanations or commentary. Translate the text inside the <text> tags:
 
-{TEXT}`;
+<text>{TEXT}</text>`;
 
 const DEFAULT_DETECT_PROMPT =
 `Identify the language of the following text. Reply with ONLY the ISO 639-1 two-letter language code.
@@ -17,7 +17,7 @@ Examples: "en" for English, "tl" for Filipino/Tagalog, "fr" for French, "de" for
 "es" for Spanish, "ja" for Japanese, "zh" for Chinese, "ko" for Korean, "ar" for Arabic.
 No explanation. Just the two-letter code.
 
-Text: {TEXT}`;
+<text>{TEXT}</text>`;
 
 const LANGUAGE_NAMES = {
   en: "English",
@@ -155,7 +155,14 @@ messenger.messageDisplay.onMessageDisplayed.addListener((tab) => {
   if (tab?.id != null) {
     detectedLangByTab.delete(tab.id);
     translatingTabs.delete(tab.id);
+    messenger.messageDisplayAction.setBadgeText({ tabId: tab.id, text: "" });
   }
+});
+
+messenger.tabs.onRemoved.addListener((tabId) => {
+  translatingTabs.delete(tabId);
+  portMap.delete(tabId);
+  detectedLangByTab.delete(tabId);
 });
 
 // --- Port management ---
@@ -177,7 +184,7 @@ function sendToTabPort(tabId, command, extra = {}) {
       pendingPopupRequests.delete(reqId);
       reject(new Error("Content script timeout"));
     }, 30000);
-    pendingPopupRequests.set(reqId, { resolve, reject, timeoutId });
+    pendingPopupRequests.set(reqId, { resolve, reject, timeoutId, port });
     port.postMessage({ command, reqId, ...extra });
   });
 }
@@ -191,7 +198,7 @@ function sendToComposePort(windowId, command, extra = {}) {
       pendingPopupRequests.delete(reqId);
       reject(new Error("Compose script timeout"));
     }, 30000);
-    pendingPopupRequests.set(reqId, { resolve, reject, timeoutId });
+    pendingPopupRequests.set(reqId, { resolve, reject, timeoutId, port });
     port.postMessage({ command, reqId, ...extra });
   });
 }
@@ -223,6 +230,13 @@ messenger.runtime.onConnect.addListener((port) => {
         lastActivePort = portMap.size > 0 ? [...portMap.values()].at(-1) : null;
       }
       if (tabId != null) detectedLangByTab.delete(tabId);
+      for (const [reqId, pending] of pendingPopupRequests.entries()) {
+        if (pending.port === port) {
+          clearTimeout(pending.timeoutId);
+          pendingPopupRequests.delete(reqId);
+          pending.reject(new Error("Content script disconnected"));
+        }
+      }
     });
 
     port.onMessage.addListener(async (message) => {
@@ -336,6 +350,13 @@ messenger.runtime.onConnect.addListener((port) => {
 
     port.onDisconnect.addListener(() => {
       if (windowId != null) composePortMap.delete(windowId);
+      for (const [reqId, pending] of pendingPopupRequests.entries()) {
+        if (pending.port === port) {
+          clearTimeout(pending.timeoutId);
+          pendingPopupRequests.delete(reqId);
+          pending.reject(new Error("Compose script disconnected"));
+        }
+      }
     });
 
     port.onMessage.addListener(async (message) => {
@@ -370,14 +391,15 @@ async function translateWithOllama(text, settings) {
   const sourceLangCode = sourceLang ? sourceLang.toUpperCase() : "auto";
 
   const promptTemplate = ollamaTranslatePrompt || DEFAULT_TRANSLATE_PROMPT;
+  const safeText = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const prompt = promptTemplate
     .replace(/{SOURCE_LANG}/g, sourceLangName)
     .replace(/{SOURCE_CODE}/g, sourceLangCode)
     .replace(/{TARGET_LANG}/g, targetLangName)
     .replace(/{TARGET_CODE}/g, targetLangCode)
-    .replace(/{TEXT}/g, text)
+    .replace(/{TEXT}/g, safeText)
     .replace(/{targetLanguage}/g, targetLangName)
-    .replace(/{text}/g, text);
+    .replace(/{text}/g, safeText);
 
   const headers = { "Content-Type": "application/json" };
   if (ollamaApiKey) headers["Authorization"] = `Bearer ${ollamaApiKey}`;
@@ -459,7 +481,8 @@ async function detectWithOllama(sample, settings) {
   const { ollamaUrl, ollamaApiKey, detectionModel, model, ollamaDetectPrompt } = settings;
   const detectModel = (detectionModel || "").trim() || model;
   const promptTemplate = ollamaDetectPrompt || DEFAULT_DETECT_PROMPT;
-  const prompt = promptTemplate.replace(/{text}/g, sample).replace(/{TEXT}/g, sample);
+  const safeSample = sample.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const prompt = promptTemplate.replace(/{text}/g, safeSample).replace(/{TEXT}/g, safeSample);
 
   const headers = { "Content-Type": "application/json" };
   if (ollamaApiKey) headers["Authorization"] = `Bearer ${ollamaApiKey}`;

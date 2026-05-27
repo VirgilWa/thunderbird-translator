@@ -21,6 +21,7 @@
 
   const nodeMap = new Map();
   let isTranslated = false;
+  let isTranslating = false;
   let translationCached = false;
   let cachedLang = null;
   let translatedSubject = null;
@@ -290,31 +291,33 @@
   }
 
   async function startTranslation(targetLang) {
-    // Invalidate cache if language changed
-    if (targetLang && targetLang !== cachedLang) {
-      translationCached = false;
-      translatedSubject = null;
-      for (const [node, data] of nodeMap.entries()) {
-        nodeMap.set(node, { original: data.original, translated: null });
-      }
-    }
-
-    // Use cache if available
-    if (translationCached && nodeMap.size > 0) {
-      for (const [node, data] of nodeMap.entries()) {
-        if (document.body.contains(node) && data.translated) {
-          node.textContent = data.translated;
+    if (isTranslating) return { success: false, error: "Translation already in progress" };
+    isTranslating = true;
+    try {
+      // Invalidate cache if language changed
+      if (targetLang && targetLang !== cachedLang) {
+        translationCached = false;
+        translatedSubject = null;
+        for (const [node, data] of nodeMap.entries()) {
+          nodeMap.set(node, { original: data.original, translated: null });
         }
       }
-      if (translatedSubject) injectSubjectBar(translatedSubject);
-      isTranslated = true;
-      return { success: true };
-    }
 
-    const blocks = extractTextBlocks();
-    if (blocks.length === 0) return { success: false, error: "No text to translate" };
+      // Use cache if available
+      if (translationCached && nodeMap.size > 0) {
+        for (const [node, data] of nodeMap.entries()) {
+          if (document.body.contains(node) && data.translated) {
+            node.textContent = data.translated;
+          }
+        }
+        if (translatedSubject) injectSubjectBar(translatedSubject);
+        isTranslated = true;
+        return { success: true };
+      }
 
-    try {
+      const blocks = extractTextBlocks();
+      if (blocks.length === 0) return { success: false, error: "No text to translate" };
+
       const preBlocks    = blocks.filter(b => b.nodes[0]?.parentElement?.tagName === "PRE");
       const nonPreBlocks = blocks.filter(b => !preBlocks.includes(b));
 
@@ -340,6 +343,8 @@
         ? "Server unreachable"
         : e.message;
       return { success: false, error: msg };
+    } finally {
+      isTranslating = false;
     }
   }
 
