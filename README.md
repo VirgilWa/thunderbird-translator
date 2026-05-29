@@ -22,7 +22,7 @@
 - 📨 **Translate received emails** — inline replacement with one-click restore
 - ✍️ **Translate while composing** — select text in the compose window and translate it in place
 - ⚡ **Auto-translate** — optionally translate every email automatically when opened
-- 🌍 **10 target languages** — English, Italian, Spanish, French, German, Portuguese, Russian, Japanese, Chinese, Korean
+- 🌍 **15 target languages** — English, Dutch, German, French, Spanish, Italian, Portuguese, Russian, Japanese, Chinese, Korean, Arabic, Turkish, Polish, Filipino
 - 💾 **Persistent settings** — service and language remembered per-service
 - 🌐 **Multilingual interface** — 7 UI languages: 🇬🇧 English, 🇮🇹 Italian, 🇩🇪 German, 🇫🇷 French, 🇪🇸 Spanish, 🇵🇹 Portuguese, 🇷🇺 Russian
 
@@ -104,13 +104,12 @@ ollama pull translategemma
 A **Translate** button appears in the message toolbar (next to Reply, Forward, etc.).
 
 1. Open an email
-2. Click **Translate** in the toolbar
-3. Select service and target language in the popup
-4. Click **Translate** — the email body is replaced inline
-5. Click **Show Original** to restore
+2. **Right-click** the Translate button to select your target language (once set, it is remembered per service)
+3. **Click** the Translate button — the email body is replaced inline
+4. Click again to restore the original
 
 #### Auto-translate
-Enable the **Auto-translate** checkbox in the popup to translate every email automatically when opened. A badge on the toolbar button shows progress:
+Enable **Auto-translate** via the right-click context menu to translate every email automatically when opened. A badge on the toolbar button shows progress:
 
 <p align="center">
   <img src="_docs/loading.png" alt="Translating…">&nbsp;&nbsp;
@@ -124,9 +123,8 @@ A **Translate** button appears in the compose toolbar.
 
 1. Write or paste text in the compose body
 2. **Select** the text you want to translate
-3. Click **Translate** in the toolbar
-4. Choose service and target language in the popup
-5. Click **Translate Selection** — selected text is replaced in place (undo works)
+3. **Right-click** the Translate button to set the target language if needed
+4. **Click** the Translate button — selected text is replaced in place (undo works)
 
 ---
 

@@ -8,7 +8,7 @@
 
   "browser_specific_settings": {
     "gecko": {
-      "id": "translator@thunderbird-addon",
+      "id": "thunderbird-translator@jctots",
       "strict_min_version": "128.0"
     }
   },
