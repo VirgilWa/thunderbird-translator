@@ -1,8 +1,8 @@
 "use strict";
 
 (() => {
-  if (window.__ollamaTranslatorLoaded) return;
-  window.__ollamaTranslatorLoaded = true;
+  if (window.__thunderbirdTranslatorLoaded) return;
+  window.__thunderbirdTranslatorLoaded = true;
 
   console.log("[Translator] Content script loaded");
 

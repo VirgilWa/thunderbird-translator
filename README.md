@@ -1,289 +1,107 @@
 # Thunderbird Translator
-**Email translation with Ollama, LibreTranslate, Google, Microsoft, and Tencent Cloud**
 
-> **Fork of [jctots/thunderbird-translator](https://github.com/jctots/thunderbird-translator), itself forked from [zoott28354/thunderbird-translator](https://github.com/zoott28354/thunderbird-translator)**
-> This fork adds Microsoft Translator, Tencent Cloud Translation, and visible, configurable Google fallback.
+**Email translation with Microsoft Translator and Tencent Cloud Translation**
 
----
+This is a focused fork of [jctots/thunderbird-translator](https://github.com/jctots/thunderbird-translator), itself forked from [zoott28354/thunderbird-translator](https://github.com/zoott28354/thunderbird-translator).
 
-<p align="center">
-  <img src="_docs/demo.gif" alt="Thunderbird Translator demo">
-</p>
+## Features
 
----
+- **Microsoft Translator** — zero-configuration default
+- **Tencent Cloud Translation** — optional credentialed provider, selected manually
+- **Tencent usage visibility** — records API-reported characters used by this Thunderbird installation each month
+- Translate received email inline and restore it with one click
+- Translate selected text while composing
+- Optional automatic translation
+- 15 target languages
+- Per-provider target-language preferences
 
-## ✨ Features
+## Requirements
 
-- 🔒 **Privacy-first** — translate on your own machine or private network; your emails stay under your control
-- 🏠 **Ollama** — local or self-hosted; zero external connections, works fully offline
-- 🖥️ **LibreTranslate** — self-hosted on your own server, or use a public instance
-- 🌐 **Google Translate** — zero-config service with optional Microsoft fallback
-- 🪟 **Microsoft Translator** — zero-config service and the default Google fallback
-- ☁️ **Tencent Cloud Translation** — optional metered service with explicit credentials; never used automatically
-- 📊 **Tencent usage visibility** — records API-reported characters used by this Thunderbird installation each month
-- 🤖 **Supports all Ollama models** — translategemma, Llama, Mistral, and more
-- 📨 **Translate received emails** — inline replacement with one-click restore
-- ✍️ **Translate while composing** — select text in the compose window and translate it in place
-- ⚡ **Auto-translate** — optionally translate every email automatically when opened
-- 🌍 **15 target languages** — English, Dutch, German, French, Spanish, Italian, Portuguese, Russian, Japanese, Chinese, Korean, Arabic, Turkish, Polish, Filipino
-- 💾 **Persistent settings** — service and language remembered per-service
-- 🌐 **Multilingual interface** — 7 UI languages: 🇬🇧 English, 🇮🇹 Italian, 🇩🇪 German, 🇫🇷 French, 🇪🇸 Spanish, 🇵🇹 Portuguese, 🇷🇺 Russian
+- Thunderbird 128 or later
+- Tencent `SecretId` and `SecretKey` only when Tencent is selected
 
----
+## Installation
 
-## 📋 Requirements
+1. Open Thunderbird Add-ons Manager.
+2. Choose **Install Add-on From File** from the gear menu.
+3. Select the generated `.xpi` file and confirm.
 
-- **Thunderbird** 128 or later (ESR and non-ESR)
-- **Ollama** — must be installed and running (local machine or private server); see [setup](#ollama-1)
-- **LibreTranslate** — must be reachable (local machine, private server, or public instance); see [setup](#libretranslate-1)
+For temporary development loading, open **Debug Add-ons**, choose **Load Temporary Add-on**, and select `manifest.json`.
 
----
+## Configuration
 
-## 📦 Installation
+Microsoft is the fresh-install default and requires no local configuration. Message content is sent to Microsoft's translation service.
 
-### From XPI file
-1. Download `thunderbird-translator.xpi` from [Releases](../../releases)
-2. In Thunderbird: **Menu → Tools → Add-ons**
-3. Click the gear icon ⚙️ → **Install Add-on from file…**
-4. Select the `.xpi` file and confirm
-
-### Development / temporary load
-1. In Thunderbird: **Ctrl+Shift+A → gear icon → Debug Add-ons**
-2. Click **Load Temporary Add-on…**
-3. Select `manifest.json` from the project folder
-
----
-
-## ⚙️ Configuration
-
-> **Default service is Microsoft Translator.** A small blind email benchmark found it strongest overall, especially for Chinese-to-English writing, and it is currently faster and more reliable than the other zero-configuration option. For private or sensitive emails, configure a local Ollama or self-hosted LibreTranslate service first.
-
-Open **Menu → Tools → Add-ons → Thunderbird Translator → Preferences**.
-
-<p align="center">
-  <img src="_docs/options.png" alt="Options page">
-</p>
-
-### Ollama
-
-| Field | Default | Notes |
-|---|---|---|
-| Server URL | `http://localhost:11434` | Change if Ollama runs on another machine |
-| Model | — | Select from installed models; click ↻ to refresh |
-| API Key | *(blank)* | Required only if Ollama is behind an auth proxy |
-
-**Test Connection** — verifies reachability and lists available models.
-
-#### Setup
-
-**Local machine** — install from [ollama.ai](https://ollama.ai), then pull a model:
-```
-ollama pull translategemma
-```
-
-**Private server** — see the [Ollama Docker documentation](https://hub.docker.com/r/ollama/ollama).
-
-### LibreTranslate
-
-| Field | Default | Notes |
-|---|---|---|
-| Server URL | `https://libretranslate.com` | Replace with your own instance URL |
-| API Key | *(blank)* | Required by some instances; leave blank for open ones |
-
-**Test Connection** — calls `/languages` on the configured URL to verify reachability.
-
-#### Setup
-
-**Self-hosted** — see [LibreTranslate on GitHub](https://github.com/LibreTranslate/LibreTranslate) for installation options (local or server).
-
-**Public instances** — use `https://libretranslate.com` or any other public instance. Some require an API key.
-
-### Microsoft Translator
-
-No configuration or API key is required. Microsoft can be selected directly, or used as the Google fallback. When fallback occurs, the translated subject bar identifies Microsoft as the provider rather than silently claiming Google was used.
-
-### Tencent Cloud Translation
-
-Tencent requires `SecretId`, `SecretKey`, `Region`, and `ProjectId`. The Options page can import these values from a user-selected Zotero `prefs.js` file; the selected file is read once and is not retained or uploaded.
-
-Tencent is a metered service and is never used as an automatic fallback. Its legacy `TextTranslate` API is retained for compatibility with Translate for Zotero but may be withdrawn by Tencent; use **Test Connection** before relying on it.
-
-### Google fallback
-
-Choose whether a Google failure should use Microsoft Translator or show the original Google error. Tencent is intentionally not offered as an automatic fallback.
+Tencent requires `SecretId`, `SecretKey`, `Region`, and `ProjectId`. The Options page can import these values once from a user-selected Zotero `prefs.js` file. The selected file is not retained or uploaded. Tencent is never selected automatically and is never used as a fallback.
 
 ### Provider selection
 
 The reproducible corpus in [`benchmarks/translation-quality-cases.json`](benchmarks/translation-quality-cases.json) covers academic notices, antenna engineering, peer review, scheduling, formatting, extension requests, technical argumentation, and procurement instructions.
 
-In the 2026-07-31 blind run, Microsoft won 5 of 8 cases and all 3 Chinese-to-English cases. Tencent was marginally stronger for English-to-Chinese overall and preserved numbers and symbols better, but was less fluent. These results are a practical routing baseline, not a universal quality guarantee:
+In the 2026-07-31 blind run:
 
-- use **Microsoft** as the general default and for Chinese-to-English composing
-- consider **Tencent** for English-to-Chinese technical reading when symbol fidelity is especially important
-- manually review either provider for publication-critical technical text
+- Microsoft won 5 of 8 cases and all 3 Chinese-to-English cases.
+- Tencent was marginally stronger for English-to-Chinese overall and preserved numbers and symbols better, but was less fluent.
+- Use Microsoft as the general default and for Chinese-to-English composing.
+- Consider Tencent for English-to-Chinese technical reading when symbol fidelity is especially important.
+- Manually review either provider for publication-critical technical text.
 
----
+## Use
 
-## 🎯 How to Use
+### Reading email
 
-### Reading emails
+- Click the toolbar button to translate or restore the current message.
+- Use the button's context menu to choose the target language or enable automatic translation.
 
-A **Translate** button appears in the message toolbar (next to Reply, Forward, etc.).
+### Composing email
 
-1. Open an email
-2. **Right-click** the Translate button to select your target language (once set, it is remembered per service)
-3. **Click** the Translate button — the email body is replaced inline
-4. Click again to restore the original
+1. Select text in the compose window.
+2. Choose a target language from the compose action menu.
+3. Click the translate button to replace the selection.
 
-#### Auto-translate
-Enable **Auto-translate** via the right-click context menu to translate every email automatically when opened. A badge on the toolbar button shows progress:
+## Security and privacy
 
-<p align="center">
-  <img src="_docs/loading.png" alt="Translating…">&nbsp;&nbsp;
-  <img src="_docs/success.png" alt="Done">&nbsp;&nbsp;
-  <img src="_docs/fail.png" alt="Error">
-</p>
-
-### Composing emails
-
-A **Translate** button appears in the compose toolbar.
-
-1. Write or paste text in the compose body
-2. **Select** the text you want to translate
-3. **Right-click** the Translate button to set the target language if needed
-4. **Click** the Translate button — selected text is replaced in place (undo works)
-
----
-
-## 🔒 Security
-
-| Mode | Data sent externally |
+| Provider | Data sent |
 |---|---|
-| Ollama (local) | Nothing — 100% on your machine |
-| Ollama (self-hosted) | Nothing — stays on your private network |
-| LibreTranslate (self-hosted) | Nothing — stays on your private network |
-| LibreTranslate (public) | Email text only, to the configured instance |
-| Google Translate | Email text only, to Google servers |
-| Microsoft Translator | Email text only, to Microsoft servers |
+| Microsoft Translator | Email text, to Microsoft translation endpoints |
 | Tencent Cloud Translation | Email text and request metadata, to Tencent Cloud |
 
-No tracking or analytics are included. Settings and credentials are stored in Thunderbird's local extension storage and are not encrypted by this add-on. Credentials are sent only where required by the selected provider; Tencent `SecretKey` is used locally to sign requests and is not placed in the request.
+No tracking or analytics are included. Settings and Tencent credentials are stored in Thunderbird's local extension storage and are not encrypted by this add-on. The Tencent `SecretKey` is used locally to sign requests and is not placed in the request.
 
-### Permissions
-- `messagesRead` — reads email content for translation
-- `messagesModify` — replaces displayed text with translation
-- `compose` — injects translation script into compose windows
-- `storage` — saves your settings locally
-- `tabs` — identifies the active window for popup communication
-- `*://*/*` — required because Ollama and LibreTranslate URLs are user-configurable; built-in providers also contact their documented service endpoints
+Network permissions are limited to these endpoints:
 
----
+- `https://edge.microsoft.com/*`
+- `https://api-edge.cognitive.microsofttranslator.com/*`
+- `https://tmt.tencentcloudapi.com/*`
 
-## 🔍 Verifying privacy
+## Test and package
 
-When using Ollama or LibreTranslate, you can confirm no email text leaves your network:
+```powershell
+node --test tests/providers.test.js tests/translation-router.test.js
+./make_xpi.ps1
+```
 
-1. In Thunderbird, right-click the toolbar and open **Developer Tools**, or go to **Tools → Developer Tools**
-2. Select the **Network** tab
-3. Translate an email
-4. Inspect the requests — you should see only traffic to your configured URL (e.g. `http://localhost:11434` or your homelab IP); nothing to `google.com` or any external service
+## Changelog
 
-The extension's full source is on GitHub. Thunderbird integration is in [`background.js`](background.js), fallback policy is isolated in [`translation-router.js`](translation-router.js), and Microsoft/Tencent providers are isolated in [`providers.js`](providers.js). There are no analytics or telemetry calls.
+### v1.8.4
 
-> **Note:** this only applies when local Ollama or self-hosted LibreTranslate is active. See the [Security](#-security) table for external providers.
+- Limited the selectable and executable provider surface to Microsoft and Tencent.
+- Migrates any retired saved provider selection to Microsoft.
+- Removed unused provider configuration and narrowed network permissions.
 
----
+### v1.8.3.3
 
-## 🚨 Troubleshooting
+- Changed the fresh-install default to Microsoft based on the blind email-quality benchmark.
+- Added the reproducible benchmark corpus and report.
 
-### "Error: Ollama error: 403 Forbidden"
-Some Ollama versions or configurations block requests from browser extensions. Set `OLLAMA_ORIGINS=moz-extension://*` before starting Ollama and restart it.
+### v1.8.3.2
 
-### "Ollama model not found"
-Run `ollama pull translategemma` (or whichever model is selected in settings).
+- Added Tencent API-reported usage tracking.
 
-### LibreTranslate: connection fails
-- Verify the URL in settings matches your instance (e.g. `http://192.168.1.10:5000`)
-- If your instance requires an API key, enter it in the API Key field
-- Click **Test Connection** to confirm reachability before translating
+### v1.8.3.1
 
-### Compose: "No text selected"
-Highlight text in the compose body *before* clicking the Translate button in the popup.
+- Added Microsoft and Tencent translation providers.
 
----
+## License
 
-## 📜 Changelog
-
-### v1.8.3.3 (fork — VirgilWa)
-- Changed the fresh-install default from unavailable Google to Microsoft based on a blind email-quality benchmark
-- Added a reproducible eight-case bidirectional quality corpus and live benchmark runner
-- Documented direction-specific provider guidance and critical technical-translation limitations
-
-### v1.8.3.2 (fork — VirgilWa)
-- Record Tencent's API-reported `UsedAmount` after successful calls
-- Show a month-resetting local Thunderbird usage counter against the published 5,000,000-character free tier
-- Clearly state that the local counter excludes Zotero, other devices, and Tencent console usage
-
-### v1.8.3.1 (fork — VirgilWa)
-- Added Microsoft Translator as a direct provider and configurable Google fallback
-- Added Tencent Cloud Translation with explicit credentials, connection test, chunking, and optional one-time Zotero `prefs.js` import
-- Fallback provider is shown in the translated subject bar
-- Added provider request timeouts and kept Tencent out of all automatic fallback paths
-
-### v1.8.3 (fork — jctots)
-- **Prompt injection mitigation** — Ollama translate and detect prompts now XML-escape email content before substitution; default prompts wrap the text in `<text>` tags to separate instruction from data
-- **Badge lifecycle fix** — `...` badge now correctly cleared when navigating to a new email before translation completes
-- **Race condition guard** — concurrent translate calls (double-click, rapid button press) are now blocked until the current translation finishes
-- **Port cleanup** — pending requests reject immediately on content script disconnect instead of waiting for the 30-second timeout
-
-### v1.8.2 (fork — jctots)
-- **Never/Always auto-translate toggle** — context menu item shows the detected source language and lets you toggle it into the exemption list; updates dynamically per email; shows "Detecting language…" while translation is in progress
-- **Language exemptions for auto-translate** — emails in excluded languages are translated first, source language is detected, then the translation is silently reverted if the language is on the never-translate list
-- **Separate detection model** — Ollama uses a dedicated detection model and prompt (defaults to the translation model); configurable separately in Options
-- **Custom translation and detection prompts** — both prompts are editable in the Advanced section of Options; support `{TEXT}`, `{TARGET_LANG}`, `{TARGET_CODE}`, `{SOURCE_LANG}`, `{SOURCE_CODE}` variables; clear to restore built-in defaults
-- **Translate Model / Detection Model labels** — renamed "Model" field to "Translate Model" to distinguish from the new Detection Model field
-- **Toggle disabled during translation** — Never/Always auto-translate button is grayed out while auto-translate is running; re-enables once detection is complete
-
-### v1.8.1 (fork — jctots)
-- Per-service language menus (read and compose independently)
-- Translation cache invalidated when target language changes
-- Inline status messages on Options page (replaces alert popups)
-- Dead popup code removed
-
-### v1.8.0 (fork — jctots)
-- Right-click context menu on toolbar button (read and compose)
-- Direct toggle UX — translate/restore without a popup
-- Per-service target language — each service remembers its own language choice
-- SVG icons (dark and light variants)
-- Target language shown in toolbar button title
-
-### v1.7.1 (fork — jctots)
-- **Translated subject bar** — sticky bar at the top of the email body showing the translated subject; respects dark mode; removed on revert
-
-### v1.7.0 (fork — jctots)
-- **Compose translation** — select text in compose window and translate in place
-- **Native toolbar UI** — action buttons in read and compose toolbars replace injected toolbar
-- **Auto-translate** — optional per-email auto-translation with badge progress indicator
-- **Self-hosted LibreTranslate** — configurable URL + optional API key; test connection button
-- **Ollama API key** support for proxied/remote instances
-
-### v1.6.0 (fork — jctots)
-- **Injected toolbar** in message view — service selector, language selector, Translate/Restore buttons
-- **Dark mode** support
-- Source language detection and translation cache
-- Dynamic Ollama URL; service dropdown in toolbar
-- Simplified options page; fork authorship
-
-### v1.5.0 (zoott28354)
-- Deterministic tab/preview routing
-- `messageDisplayScripts` programmatic registration (Thunderbird 128–147+)
-
-### v1.0.0 (zoott28354)
-- Initial release: Ollama, Google Translate, LibreTranslate; context menu UI; 7 UI locales
-
----
-
-## 📝 License
-
-MIT — free to use, modify, and distribute.
-Original work by [zoott28354](https://github.com/zoott28354/thunderbird-translator).
+MIT

@@ -5,41 +5,38 @@ const assert = require("node:assert/strict");
 
 const { translateWithFallback } = require("../translation-router.js");
 
-test("Google failure falls back to Microsoft and reports the actual provider", async () => {
+test("Microsoft is routed directly without fallback", async () => {
   const calls = [];
   const result = await translateWithFallback({
-    service: "google",
+    service: "microsoft",
     text: "hello",
     targetLang: "zh",
-    settings: { googleFallbackService: "microsoft" },
+    settings: {},
     sourceLang: null,
     async translateUsingService(service) {
       calls.push(service);
-      if (service === "google") throw new Error("Google Translate error: 429");
       return { translated: "你好", detectedLang: "en", provider: service };
     },
   });
 
-  assert.deepEqual(calls, ["google", "microsoft"]);
+  assert.deepEqual(calls, ["microsoft"]);
   assert.equal(result.translated, "你好");
   assert.equal(result.provider, "microsoft");
-  assert.equal(result.fallbackFrom, "google");
-  assert.equal(result.fallbackReason, "Google Translate error: 429");
 });
 
-test("disabled Google fallback preserves the original error", async () => {
+test("retired providers are rejected", async () => {
   await assert.rejects(
     translateWithFallback({
-      service: "google",
+      service: "unsupported",
       text: "hello",
       targetLang: "zh",
-      settings: { googleFallbackService: "none" },
+      settings: {},
       sourceLang: null,
       async translateUsingService() {
-        throw new Error("Google Translate error: 429");
+        throw new Error("should not be called");
       },
     }),
-    /Google Translate error: 429/
+    /Unsupported translation service: unsupported/
   );
 });
 
@@ -50,7 +47,7 @@ test("Tencent is never routed to another provider", async () => {
       service: "tencent",
       text: "hello",
       targetLang: "zh",
-      settings: { googleFallbackService: "microsoft" },
+      settings: {},
       sourceLang: null,
       async translateUsingService(service) {
         calls.push(service);

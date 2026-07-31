@@ -1,31 +1,11 @@
 "use strict";
 
-const DEFAULT_OLLAMA_URL = "http://localhost:11434";
-const DEFAULT_MODEL = "translategemma";
 const DEFAULT_SERVICE = "microsoft";
-const DEFAULT_LIBRE_URL = "https://libretranslate.com";
 const DEFAULT_TENCENT_REGION = "ap-shanghai";
 const DEFAULT_TENCENT_PROJECT_ID = "0";
 const TENCENT_MONTHLY_FREE_CHARS = 5000000;
 
 const SERVICE_INFO = {
-  ollama: {
-    label: "Ollama",
-    urlKey: "ollamaUrl",
-    targetLangKey: "ollamaTargetLang",
-    composeLangKey: "ollamaComposeLang",
-  },
-  google: {
-    label: "Google Translate",
-    targetLangKey: "googleTargetLang",
-    composeLangKey: "googleComposeLang",
-  },
-  libretranslate: {
-    label: "LibreTranslate",
-    urlKey: "libreUrl",
-    targetLangKey: "libreTargetLang",
-    composeLangKey: "libreComposeLang",
-  },
   microsoft: {
     label: "Microsoft Translator",
     serviceUrl: "https://www.microsoft.com/translator/",
@@ -39,20 +19,6 @@ const SERVICE_INFO = {
     composeLangKey: "tencentComposeLang",
   },
 };
-
-const DEFAULT_TRANSLATE_PROMPT =
-`You are a professional {SOURCE_LANG} ({SOURCE_CODE}) to {TARGET_LANG} ({TARGET_CODE}) translator. Your goal is to accurately convey the meaning and nuances of the original {SOURCE_LANG} text while adhering to {TARGET_LANG} grammar, vocabulary, and cultural sensitivities.
-Produce only the {TARGET_LANG} translation, without any additional explanations or commentary. Translate the text inside the <text> tags:
-
-<text>{TEXT}</text>`;
-
-const DEFAULT_DETECT_PROMPT =
-`Identify the language of the following text. Reply with ONLY the ISO 639-1 two-letter language code.
-Examples: "en" for English, "tl" for Filipino/Tagalog, "fr" for French, "de" for German,
-"es" for Spanish, "ja" for Japanese, "zh" for Chinese, "ko" for Korean, "ar" for Arabic.
-No explanation. Just the two-letter code.
-
-<text>{TEXT}</text>`;
 
 const LANGUAGE_NAMES = {
   en: "English",
@@ -91,17 +57,11 @@ const LANGUAGES = [
 ];
 
 const LANG_STORAGE_KEY = {
-  ollama: "ollamaTargetLang",
-  google: "googleTargetLang",
-  libretranslate: "libreTargetLang",
   microsoft: "microsoftTargetLang",
   tencent: "tencentTargetLang",
 };
 
 const COMPOSE_LANG_KEY = {
-  ollama: "ollamaComposeLang",
-  google: "googleComposeLang",
-  libretranslate: "libreComposeLang",
   microsoft: "microsoftComposeLang",
   tencent: "tencentComposeLang",
 };
@@ -111,13 +71,11 @@ const COMPOSE_LANG_KEY = {
 async function updateReadButtonTitle() {
   const settings = await messenger.storage.local.get({
     service: DEFAULT_SERVICE,
-    ollamaTargetLang: "en",
-    googleTargetLang: "en",
-    libreTargetLang: "en",
     microsoftTargetLang: "en",
     tencentTargetLang: "en",
   });
-  const langKey = LANG_STORAGE_KEY[settings.service] || "googleTargetLang";
+  const service = SERVICE_INFO[settings.service] ? settings.service : DEFAULT_SERVICE;
+  const langKey = LANG_STORAGE_KEY[service];
   const lang = (settings[langKey] || "en").toUpperCase();
   messenger.messageDisplayAction.setTitle({ title: `Translate (${lang})` });
 }
@@ -125,46 +83,34 @@ async function updateReadButtonTitle() {
 async function updateComposeButtonTitle() {
   const settings = await messenger.storage.local.get({
     service: DEFAULT_SERVICE,
-    ollamaComposeLang: "en",
-    googleComposeLang: "en",
-    libreComposeLang: "en",
     microsoftComposeLang: "en",
     tencentComposeLang: "en",
   });
-  const langKey = COMPOSE_LANG_KEY[settings.service] || "googleComposeLang";
+  const service = SERVICE_INFO[settings.service] ? settings.service : DEFAULT_SERVICE;
+  const langKey = COMPOSE_LANG_KEY[service];
   const lang = (settings[langKey] || "en").toUpperCase();
   messenger.composeAction.setTitle({ title: `Translate (${lang})` });
 }
 
 async function getSettings() {
-  return messenger.storage.local.get({
-    ollamaUrl: DEFAULT_OLLAMA_URL,
-    model: DEFAULT_MODEL,
-    detectionModel: "",
+  const settings = await messenger.storage.local.get({
     service: DEFAULT_SERVICE,
-    ollamaTargetLang: "en",
-    googleTargetLang: "en",
-    libreTargetLang: "en",
     microsoftTargetLang: "en",
     tencentTargetLang: "en",
-    ollamaComposeLang: "en",
-    googleComposeLang: "en",
-    libreComposeLang: "en",
     microsoftComposeLang: "en",
     tencentComposeLang: "en",
-    libreUrl: DEFAULT_LIBRE_URL,
-    ollamaApiKey: "",
-    libreApiKey: "",
-    googleFallbackService: "microsoft",
     tencentSecretId: "",
     tencentSecretKey: "",
     tencentRegion: DEFAULT_TENCENT_REGION,
     tencentProjectId: DEFAULT_TENCENT_PROJECT_ID,
     autoTranslate: false,
     neverTranslateLangs: [],
-    ollamaTranslatePrompt: "",
-    ollamaDetectPrompt: "",
   });
+  if (!SERVICE_INFO[settings.service]) {
+    settings.service = DEFAULT_SERVICE;
+    await messenger.storage.local.set({ service: DEFAULT_SERVICE });
+  }
+  return settings;
 }
 
 function currentLocalMonth() {
@@ -232,8 +178,7 @@ updateReadButtonTitle();
 updateComposeButtonTitle();
 
 // --- Detected language cache (tabId → lang code) ---
-// Google/LT: populated from translation API responses.
-// Ollama: populated by a separate detectWithOllama() call after translation.
+// Populated from provider translation responses.
 // Cleared when a new message is displayed in that tab.
 
 const detectedLangByTab = new Map();
@@ -339,7 +284,7 @@ messenger.runtime.onConnect.addListener((port) => {
           const sourceLang = tabId != null ? (detectedLangByTab.get(tabId) || null) : null;
           const result = await translateText(message.text, settings, null, sourceLang);
           const { translated, detectedLang } = result;
-          // Cache detected lang from translation response (Google / LT)
+          // Cache the provider-reported source language.
           if (tabId != null && detectedLang && !detectedLangByTab.has(tabId)) {
             detectedLangByTab.set(tabId, detectedLang);
           }
@@ -357,30 +302,11 @@ messenger.runtime.onConnect.addListener((port) => {
       }
 
       // Exemption check: called after auto-translate completes.
-      // For Ollama: runs detection here (after translation) if neverTranslateLangs is non-empty.
       if (message.command === "checkExemption") {
         try {
           const settings = await getSettings();
           const { neverTranslateLangs = [] } = settings;
           let detectedLang = tabId != null ? (detectedLangByTab.get(tabId) || null) : null;
-
-          // Ollama: no detected lang from translation response — run separate detection now
-          if (!detectedLang && neverTranslateLangs.length > 0
-              && settings.service === "ollama" && tabId != null) {
-            try {
-              const msg = await messenger.messageDisplay.getDisplayedMessage(tabId);
-              if (msg) {
-                const full = await messenger.messages.getFull(msg.id);
-                const sample = extractPlainTextFromParts(full).trim().slice(0, 500);
-                if (sample) {
-                  detectedLang = await detectWithOllama(sample, settings);
-                  detectedLangByTab.set(tabId, detectedLang);
-                }
-              }
-            } catch (e) {
-              console.warn("[Translator] Ollama detection failed in checkExemption:", e.message);
-            }
-          }
 
           const shouldRevert = !!(detectedLang && neverTranslateLangs.includes(detectedLang));
           port.postMessage({ id: message.id, success: true, shouldRevert });
@@ -471,7 +397,7 @@ messenger.runtime.onConnect.addListener((port) => {
       if (message.command === "translate") {
         try {
           const settings = await getSettings();
-          const composeLangKey = COMPOSE_LANG_KEY[settings.service] || "googleComposeLang";
+          const composeLangKey = COMPOSE_LANG_KEY[settings.service];
           const targetLang = settings[composeLangKey] || "en";
           const { translated } = await translateText(message.text, settings, targetLang, null);
           port.postMessage({ id: message.id, success: true, translated });
@@ -491,106 +417,9 @@ messenger.runtime.onConnect.addListener((port) => {
 // --- Translation APIs ---
 // All return { translated: string, detectedLang: string|null }
 
-async function translateWithOllama(text, settings) {
-  const { ollamaUrl, model, targetLanguage, ollamaApiKey, ollamaTranslatePrompt, sourceLang } = settings;
-  const targetLangName = LANGUAGE_NAMES[targetLanguage] || targetLanguage;
-  const targetLangCode = (targetLanguage || "").toUpperCase();
-  const sourceLangName = sourceLang ? (LANGUAGE_NAMES[sourceLang] || sourceLang.toUpperCase()) : "the source language";
-  const sourceLangCode = sourceLang ? sourceLang.toUpperCase() : "auto";
-
-  const promptTemplate = ollamaTranslatePrompt || DEFAULT_TRANSLATE_PROMPT;
-  const safeText = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const prompt = promptTemplate
-    .replace(/{SOURCE_LANG}/g, sourceLangName)
-    .replace(/{SOURCE_CODE}/g, sourceLangCode)
-    .replace(/{TARGET_LANG}/g, targetLangName)
-    .replace(/{TARGET_CODE}/g, targetLangCode)
-    .replace(/{TEXT}/g, safeText)
-    .replace(/{targetLanguage}/g, targetLangName)
-    .replace(/{text}/g, safeText);
-
-  const headers = { "Content-Type": "application/json" };
-  if (ollamaApiKey) headers["Authorization"] = `Bearer ${ollamaApiKey}`;
-
-  const response = await fetch(`${ollamaUrl}/api/generate`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ model, prompt, stream: false }),
-  });
-
-  if (!response.ok) {
-    if (response.status === 404)
-      throw new Error(`Ollama model "${model}" not found. Please run: ollama pull ${model}`);
-    throw new Error(`Ollama error: ${response.status} ${response.statusText}`);
-  }
-
-  const translated = (await response.json()).response.trim();
-  return { translated, detectedLang: null }; // Ollama detection is a separate call
-}
-
-async function translateWithGoogle(text, targetLanguage) {
-  const params = new URLSearchParams({
-    client: "gtx", sl: "auto", tl: targetLanguage, dt: "t", q: text,
-  });
-  const response = await fetch(`https://translate.google.com/translate_a/single?${params}`, {
-    headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
-  });
-  if (!response.ok) throw new Error(`Google Translate error: ${response.status}`);
-  const data = await response.json();
-  if (data?.[0] && Array.isArray(data[0])) {
-    const translated = data[0].filter(p => p?.[0]).map(p => p[0]).join("").trim();
-    if (translated) return { translated, detectedLang: data[2] || null };
-  }
-  throw new Error("Invalid response from Google Translate");
-}
-
-async function translateWithLibreTranslate(text, targetLanguage, libreUrl, libreApiKey) {
-  const base = (libreUrl || DEFAULT_LIBRE_URL).replace(/\/+$/, "");
-  const endpoint = base.endsWith("/translate") ? base : base + "/translate";
-  const body = { q: text, source: "auto", target: targetLanguage };
-  if (libreApiKey) body.api_key = libreApiKey;
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`LibreTranslate error: ${response.status} - ${err.substring(0, 100)}`);
-  }
-  const data = await response.json();
-  if (data?.translatedText) {
-    return {
-      translated: data.translatedText.trim(),
-      detectedLang: data.detectedLanguage?.language || null,
-    };
-  }
-  if (data?.error) throw new Error(`LibreTranslate API error: ${data.error}`);
-  throw new Error("Invalid response from LibreTranslate");
-}
-
 async function translateUsingService(service, text, targetLang, settings, sourceLang) {
   let result;
   switch (service) {
-    case "ollama":
-      result = await translateWithOllama(text, {
-        ...settings,
-        targetLanguage: targetLang,
-        sourceLang: sourceLang || null,
-      });
-      break;
-    case "google":
-      result = await translateWithGoogle(text, targetLang);
-      break;
-    case "libretranslate":
-      result = await translateWithLibreTranslate(
-        text,
-        targetLang,
-        settings.libreUrl,
-        settings.libreApiKey
-      );
-      break;
     case "microsoft":
       result = await TranslatorProviders.translateWithMicrosoft(text, targetLang);
       break;
@@ -618,64 +447,6 @@ async function translateText(text, settings, targetLangOverride, sourceLang) {
     sourceLang,
     translateUsingService,
   });
-}
-
-// --- Ollama language detection (separate from translation) ---
-
-async function detectWithOllama(sample, settings) {
-  const { ollamaUrl, ollamaApiKey, detectionModel, model, ollamaDetectPrompt } = settings;
-  const detectModel = (detectionModel || "").trim() || model;
-  const promptTemplate = ollamaDetectPrompt || DEFAULT_DETECT_PROMPT;
-  const safeSample = sample.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const prompt = promptTemplate.replace(/{text}/g, safeSample).replace(/{TEXT}/g, safeSample);
-
-  const headers = { "Content-Type": "application/json" };
-  if (ollamaApiKey) headers["Authorization"] = `Bearer ${ollamaApiKey}`;
-
-  const response = await fetch(`${ollamaUrl}/api/generate`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ model: detectModel, prompt, stream: false }),
-  });
-  if (!response.ok) throw new Error(`Ollama detection error: ${response.status}`);
-
-  const raw = (await response.json()).response.trim().toLowerCase();
-
-  // 1. Strict: response starts with a known 2-3 char code
-  const strictMatch = raw.match(/^([a-z]{2,3})\b/);
-  if (strictMatch && LANGUAGE_NAMES[strictMatch[1]]) return strictMatch[1];
-
-  // 2. Reverse-lookup: model returned a full language name ("English", "Filipino", ...)
-  for (const [code, name] of Object.entries(LANGUAGE_NAMES)) {
-    if (raw.includes(name.toLowerCase())) return code;
-  }
-
-  // 3. Scan for any known code anywhere in the response
-  const tokens = raw.match(/\b[a-z]{2,3}\b/g) || [];
-  for (const token of tokens) {
-    if (LANGUAGE_NAMES[token]) return token;
-  }
-
-  throw new Error(`Could not parse language code from Ollama detection: "${raw}"`);
-}
-
-// Extract plain text from a MessagePart tree (messenger.messages.getFull response)
-function extractPlainTextFromParts(part) {
-  if (!part) return "";
-  if (part.contentType === "text/plain" && part.body) return part.body;
-  if (Array.isArray(part.parts)) {
-    for (const p of part.parts) {
-      const text = extractPlainTextFromParts(p);
-      if (text) return text;
-    }
-  }
-  return "";
-}
-
-async function getInstalledModels(ollamaUrl) {
-  const response = await fetch(`${ollamaUrl || DEFAULT_OLLAMA_URL}/api/tags`);
-  if (!response.ok) throw new Error(`Ollama error: ${response.status}`);
-  return (await response.json()).models.map(m => m.name);
 }
 
 // --- Context menu ---
@@ -751,7 +522,7 @@ browser.menus.onShown.addListener(async (info, tab) => {
   if (isRead) {
     await browser.menus.update("auto-translate", { checked: settings.autoTranslate });
 
-    const readLangKey    = LANG_STORAGE_KEY[settings.service] || "googleTargetLang";
+    const readLangKey    = LANG_STORAGE_KEY[settings.service];
     const activeReadLang = settings[readLangKey] || "en";
     for (const lang of LANGUAGES) {
       await browser.menus.update(`read-lang-${lang.value}`, { checked: lang.value === activeReadLang });
@@ -771,23 +542,6 @@ browser.menus.onShown.addListener(async (info, tab) => {
     } else {
       let detectedLang = tabId != null ? detectedLangByTab.get(tabId) : null;
 
-      // For Ollama: run on-demand detection when cache is empty (e.g. manual translate)
-      if (!detectedLang && settings.service === "ollama" && tabId != null) {
-        try {
-          const msg = await messenger.messageDisplay.getDisplayedMessage(tabId);
-          if (msg) {
-            const full = await messenger.messages.getFull(msg.id);
-            const sample = extractPlainTextFromParts(full).trim().slice(0, 500);
-            if (sample) {
-              detectedLang = await detectWithOllama(sample, settings);
-              detectedLangByTab.set(tabId, detectedLang);
-            }
-          }
-        } catch (e) {
-          console.warn("[Translator] Ollama on-demand detection failed in onShown:", e.message);
-        }
-      }
-
       if (detectedLang) {
         const langName   = LANGUAGE_NAMES[detectedLang] || detectedLang.toUpperCase();
         const neverLangs = settings.neverTranslateLangs || [];
@@ -806,7 +560,7 @@ browser.menus.onShown.addListener(async (info, tab) => {
   }
 
   if (isCompose) {
-    const composeLangKey    = COMPOSE_LANG_KEY[settings.service] || "googleComposeLang";
+    const composeLangKey    = COMPOSE_LANG_KEY[settings.service];
     const activeComposeLang = settings[composeLangKey] || "en";
     for (const lang of LANGUAGES) {
       await browser.menus.update(`compose-lang-${lang.value}`, { checked: lang.value === activeComposeLang });
@@ -836,16 +590,17 @@ browser.menus.onClicked.addListener(async (info, tab) => {
   }
 
   const { service } = await messenger.storage.local.get({ service: DEFAULT_SERVICE });
+  const normalizedService = SERVICE_INFO[service] ? service : DEFAULT_SERVICE;
   if (String(info.menuItemId).startsWith("read-lang-")) {
     const lang    = info.menuItemId.replace("read-lang-", "");
-    const langKey = LANG_STORAGE_KEY[service] || "googleTargetLang";
+    const langKey = LANG_STORAGE_KEY[normalizedService];
     await messenger.storage.local.set({ [langKey]: lang });
     messenger.messageDisplayAction.setTitle({ title: `Translate (${lang.toUpperCase()})` });
     return;
   }
   if (String(info.menuItemId).startsWith("compose-lang-")) {
     const lang    = info.menuItemId.replace("compose-lang-", "");
-    const langKey = COMPOSE_LANG_KEY[service] || "googleComposeLang";
+    const langKey = COMPOSE_LANG_KEY[normalizedService];
     await messenger.storage.local.set({ [langKey]: lang });
     messenger.composeAction.setTitle({ title: `Translate (${lang.toUpperCase()})` });
   }
@@ -864,7 +619,7 @@ messenger.messageDisplayAction.onClicked.addListener(async (tab) => {
       messenger.messageDisplayAction.setBadgeText({ tabId, text: "" });
     } else {
       const settings = await getSettings();
-      const langKey = SERVICE_INFO[settings.service]?.targetLangKey || "googleTargetLang";
+      const langKey = SERVICE_INFO[settings.service].targetLangKey;
       const targetLang = settings[langKey] || "en";
       const result = await sendToTabPort(tabId, "doTranslate", { targetLang });
       if (result.success) {
@@ -910,17 +665,6 @@ messenger.composeAction.onClicked.addListener(async (tab) => {
 // --- Message handler (options page) ---
 
 messenger.runtime.onMessage.addListener(async (message) => {
-  if (message.command === "getModels") {
-    try {
-      const settings = await getSettings();
-      return { success: true, models: await getInstalledModels(message.ollamaUrl || settings.ollamaUrl) };
-    } catch (e) { return { success: false, error: e.message }; }
-  }
-  if (message.command === "testConnection") {
-    try {
-      return { success: true, models: await getInstalledModels(message.ollamaUrl) };
-    } catch (e) { return { success: false, error: e.message }; }
-  }
   if (message.command === "testTencentConnection") {
     try {
       const result = await TranslatorProviders.translateWithTencent("connection test", "zh", {
@@ -939,21 +683,15 @@ messenger.runtime.onMessage.addListener(async (message) => {
     return { success: true, ...(await getTencentUsageSummary()) };
   }
   if (message.command === "saveSettings") {
+    if (!SERVICE_INFO[message.service]) {
+      return { success: false, error: `Unsupported translation service: ${message.service}` };
+    }
     await messenger.storage.local.set({
-      ollamaUrl:             message.ollamaUrl,
-      model:                 message.model,
-      detectionModel:        message.detectionModel,
-      ollamaApiKey:          message.ollamaApiKey,
-      libreUrl:              message.libreUrl,
-      libreApiKey:           message.libreApiKey,
       service:               message.service,
-      googleFallbackService: message.googleFallbackService,
       tencentSecretId:       message.tencentSecretId,
       tencentSecretKey:      message.tencentSecretKey,
       tencentRegion:         message.tencentRegion,
       tencentProjectId:      message.tencentProjectId,
-      ollamaTranslatePrompt: message.ollamaTranslatePrompt,
-      ollamaDetectPrompt:    message.ollamaDetectPrompt,
     });
     updateReadButtonTitle();
     updateComposeButtonTitle();
