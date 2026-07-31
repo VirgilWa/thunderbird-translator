@@ -57,6 +57,34 @@ test("Tencent signing is deterministic and never sends SecretKey", async () => {
   assert.equal(request.body.includes(settings.tencentSecretKey), false);
 });
 
+test("Tencent exposes the API-reported UsedAmount", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => fakeResponse({
+    json: {
+      Response: {
+        Source: "en",
+        Target: "zh",
+        TargetText: "用量测试",
+        UsedAmount: 10,
+      },
+    },
+  });
+
+  try {
+    const result = await providers.translateWithTencent("usage test", "zh", {
+      tencentSecretId: "test-id",
+      tencentSecretKey: "test-key",
+      tencentRegion: "ap-shanghai",
+      tencentProjectId: "0",
+    });
+    assert.equal(result.translated, "用量测试");
+    assert.equal(result.detectedLang, "en");
+    assert.equal(result.usedAmount, 10);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("Microsoft refreshes an expired token after one 401", async () => {
   providers.resetMicrosoftTokenForTests();
   const originalFetch = globalThis.fetch;

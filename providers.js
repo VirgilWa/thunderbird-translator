@@ -259,6 +259,9 @@
     return {
       translated: data.Response.TargetText.trim(),
       detectedLang: data.Response.Source || null,
+      usedAmount: Number.isFinite(Number(data.Response.UsedAmount))
+        ? Number(data.Response.UsedAmount)
+        : null,
     };
   }
 
@@ -268,6 +271,8 @@
     const paragraphs = text.split("\n\n");
     const translatedParagraphs = [];
     let detectedLang = null;
+    let usedAmount = 0;
+    let hasUsedAmount = false;
     let requestCount = 0;
 
     for (const paragraph of paragraphs) {
@@ -284,6 +289,10 @@
         const result = await translateTencentChunk(piece, targetLanguage, settings);
         translatedPieces.push(result.translated);
         if (!detectedLang) detectedLang = result.detectedLang;
+        if (Number.isFinite(result.usedAmount)) {
+          usedAmount += result.usedAmount;
+          hasUsedAmount = true;
+        }
         requestCount += 1;
       }
       const pieceSeparator = ["zh", "ja", "ko"].includes(targetLanguage) ? "" : " ";
@@ -293,6 +302,7 @@
     return {
       translated: translatedParagraphs.join("\n\n"),
       detectedLang,
+      usedAmount: hasUsedAmount ? usedAmount : null,
     };
   }
 

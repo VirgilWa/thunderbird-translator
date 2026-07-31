@@ -6,6 +6,7 @@ const DEFAULT_SERVICE = "google";
 const DEFAULT_LIBRE_URL = "https://libretranslate.com";
 const DEFAULT_TENCENT_REGION = "ap-shanghai";
 const DEFAULT_TENCENT_PROJECT_ID = "0";
+const TENCENT_MONTHLY_FREE_CHARS = 5000000;
 
 const SERVICE_INFO = {
   ollama: {
@@ -164,6 +165,45 @@ async function getSettings() {
     ollamaTranslatePrompt: "",
     ollamaDetectPrompt: "",
   });
+}
+
+function currentLocalMonth() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+let tencentUsageWriteQueue = Promise.resolve();
+
+async function getTencentUsageSummary() {
+  const month = currentLocalMonth();
+  const stored = await messenger.storage.local.get({
+    tencentUsageMonth: "",
+    tencentUsageChars: 0,
+  });
+  const used = stored.tencentUsageMonth === month
+    ? Math.max(0, Number(stored.tencentUsageChars) || 0)
+    : 0;
+  return {
+    month,
+    used,
+    freeLimit: TENCENT_MONTHLY_FREE_CHARS,
+  };
+}
+
+function recordTencentUsage(usedAmount) {
+  const amount = Number(usedAmount);
+  if (!Number.isFinite(amount) || amount <= 0) return Promise.resolve();
+
+  tencentUsageWriteQueue = tencentUsageWriteQueue
+    .catch(() => undefined)
+    .then(async () => {
+      const summary = await getTencentUsageSummary();
+      await messenger.storage.local.set({
+        tencentUsageMonth: summary.month,
+        tencentUsageChars: summary.used + amount,
+      });
+    });
+  return tencentUsageWriteQueue;
 }
 
 // --- Register content scripts ---
@@ -556,6 +596,7 @@ async function translateUsingService(service, text, targetLang, settings, source
       break;
     case "tencent":
       result = await TranslatorProviders.translateWithTencent(text, targetLang, settings);
+      await recordTencentUsage(result.usedAmount);
       break;
     default:
       throw new Error(`Unknown service: ${service}`);
@@ -882,16 +923,20 @@ messenger.runtime.onMessage.addListener(async (message) => {
   }
   if (message.command === "testTencentConnection") {
     try {
-      await TranslatorProviders.translateWithTencent("connection test", "zh", {
+      const result = await TranslatorProviders.translateWithTencent("connection test", "zh", {
         tencentSecretId: message.tencentSecretId,
         tencentSecretKey: message.tencentSecretKey,
         tencentRegion: message.tencentRegion,
         tencentProjectId: message.tencentProjectId,
       });
+      await recordTencentUsage(result.usedAmount);
       return { success: true };
     } catch (e) {
       return { success: false, error: e.message };
     }
+  }
+  if (message.command === "getTencentUsage") {
+    return { success: true, ...(await getTencentUsageSummary()) };
   }
   if (message.command === "saveSettings") {
     await messenger.storage.local.set({

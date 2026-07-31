@@ -51,6 +51,7 @@ const statusDiv               = document.getElementById("status");
 const ollamaTestStatus        = document.getElementById("ollamaTestStatus");
 const libreTestStatus         = document.getElementById("libreTestStatus");
 const tencentTestStatus       = document.getElementById("tencentTestStatus");
+const tencentUsageText        = document.getElementById("tencentUsage");
 const serviceRadios           = document.querySelectorAll("input[name='service']");
 const ollamaTranslatePromptTA = document.getElementById("ollamaTranslatePrompt");
 const ollamaDetectPromptTA    = document.getElementById("ollamaDetectPrompt");
@@ -120,6 +121,25 @@ async function loadSettings() {
 
   await loadModels(settings.model);
   await loadDetectionModels(settings.detectionModel);
+  await loadTencentUsage();
+}
+
+async function loadTencentUsage() {
+  const result = await browser.runtime.sendMessage({ command: "getTencentUsage" });
+  if (!result?.success) {
+    tencentUsageText.textContent = "Local Thunderbird usage is unavailable.";
+    return;
+  }
+
+  const formatter = new Intl.NumberFormat();
+  const percent = result.freeLimit > 0 ? (result.used / result.freeLimit) * 100 : 0;
+  tencentUsageText.textContent =
+    `Thunderbird observed in ${result.month}: ${formatter.format(result.used)} / ` +
+    `${formatter.format(result.freeLimit)} characters (${percent.toFixed(2)}%). ` +
+    "This local counter does not include Zotero, other devices, or Tencent console usage.";
+  tencentUsageText.style.color = percent >= 95
+    ? "#a4000f"
+    : percent >= 80 ? "#856404" : "#666";
 }
 
 function readZoteroPreference(contents, preferenceName) {
@@ -322,6 +342,7 @@ testTencentBtn.addEventListener("click", async () => {
     result.success ? "Connected successfully." : `Connection failed: ${result.error}`,
     !result.success
   );
+  if (result.success) await loadTencentUsage();
 });
 
 saveBtn.addEventListener("click", async () => {

@@ -20,6 +20,7 @@
 - 🌐 **Google Translate** — zero-config service with optional Microsoft fallback
 - 🪟 **Microsoft Translator** — zero-config service and the default Google fallback
 - ☁️ **Tencent Cloud Translation** — optional metered service with explicit credentials; never used automatically
+- 📊 **Tencent usage visibility** — records API-reported characters used by this Thunderbird installation each month
 - 🤖 **Supports all Ollama models** — translategemma, Llama, Mistral, and more
 - 📨 **Translate received emails** — inline replacement with one-click restore
 - ✍️ **Translate while composing** — select text in the compose window and translate it in place
@@ -202,6 +203,11 @@ Highlight text in the compose body *before* clicking the Translate button in the
 ---
 
 ## 📜 Changelog
+
+### v1.8.3.2 (fork — VirgilWa)
+- Record Tencent's API-reported `UsedAmount` after successful calls
+- Show a month-resetting local Thunderbird usage counter against the published 5,000,000-character free tier
+- Clearly state that the local counter excludes Zotero, other devices, and Tencent console usage
 
 ### v1.8.3.1 (fork — VirgilWa)
 - Added Microsoft Translator as a direct provider and configurable Google fallback
