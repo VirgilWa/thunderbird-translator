@@ -1,8 +1,8 @@
 # Thunderbird Translator
-**Privacy-first email translation — Ollama (local/self-hosted), LibreTranslate (self-hosted or public), or Google Translate as a fallback**
+**Email translation with Ollama, LibreTranslate, Google, Microsoft, and Tencent Cloud**
 
-> **Fork of [zoott28354/thunderbird-translator](https://github.com/zoott28354/thunderbird-translator)**
-> Extended with compose translation, auto-translate, local LibreTranslate support, and a native toolbar UI.
+> **Fork of [jctots/thunderbird-translator](https://github.com/jctots/thunderbird-translator), itself forked from [zoott28354/thunderbird-translator](https://github.com/zoott28354/thunderbird-translator)**
+> This fork adds Microsoft Translator, Tencent Cloud Translation, and visible, configurable Google fallback.
 
 ---
 
@@ -17,7 +17,9 @@
 - 🔒 **Privacy-first** — translate on your own machine or private network; your emails stay under your control
 - 🏠 **Ollama** — local or self-hosted; zero external connections, works fully offline
 - 🖥️ **LibreTranslate** — self-hosted on your own server, or use a public instance
-- 🌐 **Google Translate** — zero-config fallback only; email text is sent to Google's servers. **Not suitable for private or sensitive emails** — use Ollama or LibreTranslate instead
+- 🌐 **Google Translate** — zero-config service with optional Microsoft fallback
+- 🪟 **Microsoft Translator** — zero-config service and the default Google fallback
+- ☁️ **Tencent Cloud Translation** — optional metered service with explicit credentials; never used automatically
 - 🤖 **Supports all Ollama models** — translategemma, Llama, Mistral, and more
 - 📨 **Translate received emails** — inline replacement with one-click restore
 - ✍️ **Translate while composing** — select text in the compose window and translate it in place
@@ -53,7 +55,7 @@
 
 ## ⚙️ Configuration
 
-> **Default service is Google Translate.** On a fresh install, email text is sent to Google's servers until you configure Ollama or LibreTranslate. If you are translating private or sensitive emails, set up one of those services first and switch the active service in Preferences.
+> **Default service is Google Translate with Microsoft fallback enabled.** On a fresh install, email text is sent to Google and, if Google fails, to Microsoft. For private or sensitive emails, configure a local Ollama or self-hosted LibreTranslate service first.
 
 Open **Menu → Tools → Add-ons → Thunderbird Translator → Preferences**.
 
@@ -94,6 +96,20 @@ ollama pull translategemma
 **Self-hosted** — see [LibreTranslate on GitHub](https://github.com/LibreTranslate/LibreTranslate) for installation options (local or server).
 
 **Public instances** — use `https://libretranslate.com` or any other public instance. Some require an API key.
+
+### Microsoft Translator
+
+No configuration or API key is required. Microsoft can be selected directly, or used as the Google fallback. When fallback occurs, the translated subject bar identifies Microsoft as the provider rather than silently claiming Google was used.
+
+### Tencent Cloud Translation
+
+Tencent requires `SecretId`, `SecretKey`, `Region`, and `ProjectId`. The Options page can import these values from a user-selected Zotero `prefs.js` file; the selected file is read once and is not retained or uploaded.
+
+Tencent is a metered service and is never used as an automatic fallback. Its legacy `TextTranslate` API is retained for compatibility with Translate for Zotero but may be withdrawn by Tencent; use **Test Connection** before relying on it.
+
+### Google fallback
+
+Choose whether a Google failure should use Microsoft Translator or show the original Google error. Tencent is intentionally not offered as an automatic fallback.
 
 ---
 
@@ -137,8 +153,10 @@ A **Translate** button appears in the compose toolbar.
 | LibreTranslate (self-hosted) | Nothing — stays on your private network |
 | LibreTranslate (public) | Email text only, to the configured instance |
 | Google Translate | Email text only, to Google servers |
+| Microsoft Translator | Email text only, to Microsoft servers |
+| Tencent Cloud Translation | Email text and request metadata, to Tencent Cloud |
 
-No tracking, no analytics. API keys and settings are stored locally in Thunderbird's own storage — never transmitted.
+No tracking or analytics are included. Settings and credentials are stored in Thunderbird's local extension storage and are not encrypted by this add-on. Credentials are sent only where required by the selected provider; Tencent `SecretKey` is used locally to sign requests and is not placed in the request.
 
 ### Permissions
 - `messagesRead` — reads email content for translation
@@ -146,7 +164,7 @@ No tracking, no analytics. API keys and settings are stored locally in Thunderbi
 - `compose` — injects translation script into compose windows
 - `storage` — saves your settings locally
 - `tabs` — identifies the active window for popup communication
-- `*://*/*` — required because Ollama and LibreTranslate URLs are user-configurable; the extension only contacts the URLs you set in preferences
+- `*://*/*` — required because Ollama and LibreTranslate URLs are user-configurable; built-in providers also contact their documented service endpoints
 
 ---
 
@@ -159,9 +177,9 @@ When using Ollama or LibreTranslate, you can confirm no email text leaves your n
 3. Translate an email
 4. Inspect the requests — you should see only traffic to your configured URL (e.g. `http://localhost:11434` or your homelab IP); nothing to `google.com` or any external service
 
-The extension's full source is on GitHub. All translation calls are in [`background.js`](background.js) — three `fetch()` call sites: `translateWithOllama()`, `translateWithGoogle()`, and `translateWithLibreTranslate()`, routed by a single `switch` in `translateText()`. There are no background network calls, analytics, or telemetry.
+The extension's full source is on GitHub. Thunderbird integration is in [`background.js`](background.js), fallback policy is isolated in [`translation-router.js`](translation-router.js), and Microsoft/Tencent providers are isolated in [`providers.js`](providers.js). There are no analytics or telemetry calls.
 
-> **Note:** this only applies when Ollama or LibreTranslate is the active service. Google Translate always contacts Google's servers — see the [Security](#-security) table.
+> **Note:** this only applies when local Ollama or self-hosted LibreTranslate is active. See the [Security](#-security) table for external providers.
 
 ---
 
@@ -184,6 +202,12 @@ Highlight text in the compose body *before* clicking the Translate button in the
 ---
 
 ## 📜 Changelog
+
+### v1.8.3.1 (fork — VirgilWa)
+- Added Microsoft Translator as a direct provider and configurable Google fallback
+- Added Tencent Cloud Translation with explicit credentials, connection test, chunking, and optional one-time Zotero `prefs.js` import
+- Fallback provider is shown in the translated subject bar
+- Added provider request timeouts and kept Tencent out of all automatic fallback paths
 
 ### v1.8.3 (fork — jctots)
 - **Prompt injection mitigation** — Ollama translate and detect prompts now XML-escape email content before substitution; default prompts wrap the text in `<text>` tags to separate instruction from data

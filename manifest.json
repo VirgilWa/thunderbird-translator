@@ -1,14 +1,14 @@
 {
   "manifest_version": 2,
   "name": "Thunderbird Translator",
-  "version": "1.8.3",
-  "description": "Translate emails using Ollama, Google Translate or LibreTranslate",
-  "author": "jctots (fork of zoott28354)",
+  "version": "1.8.3.1",
+  "description": "Translate emails using Microsoft, Tencent Cloud, Ollama, Google Translate or LibreTranslate",
+  "author": "jctots (fork of zoott28354); VirgilWa fork",
   "default_locale": "en",
 
   "browser_specific_settings": {
     "gecko": {
-      "id": "thunderbird-translator@jctots",
+      "id": "thunderbird-translator@virgilwa",
       "strict_min_version": "128.0"
     }
   },
@@ -50,7 +50,7 @@
   },
 
   "background": {
-    "scripts": ["background.js"]
+    "scripts": ["providers.js", "translation-router.js", "background.js"]
   },
 
   "options_ui": {

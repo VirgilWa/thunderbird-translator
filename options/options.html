@@ -68,6 +68,7 @@
     }
 
     input[type="text"],
+    input[type="password"],
     select,
     textarea {
       width: 100%;
@@ -303,6 +304,51 @@
     </div>
   </div>
 
+  <!-- Microsoft Translator -->
+  <div class="service-section">
+    <label class="service-header">
+      <input type="radio" name="service" value="microsoft" id="radio-microsoft">
+      Microsoft Translator
+    </label>
+    <div class="service-config">
+      <p class="privacy-note">⚠ No API key is required. Message content is sent to Microsoft's translation service.</p>
+    </div>
+  </div>
+
+  <!-- Tencent Cloud Translation -->
+  <div class="service-section">
+    <label class="service-header">
+      <input type="radio" name="service" value="tencent" id="radio-tencent">
+      Tencent Cloud Translation
+    </label>
+    <div class="service-config">
+      <p class="privacy-note">⚠ Metered service. It is never used as an automatic fallback. Credentials are stored in the Thunderbird profile and are not encrypted by this add-on.</p>
+      <div class="field">
+        <label for="tencentSecretId">SecretId</label>
+        <input type="password" id="tencentSecretId" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label for="tencentSecretKey">SecretKey</label>
+        <input type="password" id="tencentSecretKey" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label for="tencentRegion">Region</label>
+        <input type="text" id="tencentRegion" placeholder="ap-shanghai">
+      </div>
+      <div class="field">
+        <label for="tencentProjectId">ProjectId</label>
+        <input type="text" id="tencentProjectId" placeholder="0">
+      </div>
+      <input type="file" id="zoteroPrefsFile" accept=".js" hidden>
+      <div class="input-row">
+        <button id="importZoteroTencent">Import from Zotero prefs.js</button>
+        <button id="testTencentConnection">Test Connection</button>
+      </div>
+      <div id="tencentTestStatus" class="status"></div>
+      <p class="field-hint">Import reads a user-selected Zotero <code>prefs.js</code> once. The file is not retained or uploaded.</p>
+    </div>
+  </div>
+
   <!-- Google Translate -->
   <div class="service-section">
     <label class="service-header">
@@ -311,6 +357,14 @@
     </label>
     <div class="service-config">
       <p class="privacy-note">⚠ No configuration required, but message content is sent to Google's servers.</p>
+      <div class="field">
+        <label for="googleFallbackService">If Google fails</label>
+        <select id="googleFallbackService">
+          <option value="microsoft">Use Microsoft Translator</option>
+          <option value="none">Show the Google error</option>
+        </select>
+        <p class="field-hint">A fallback is shown in the translated subject bar; Tencent is never selected automatically.</p>
+      </div>
     </div>
   </div>
 

@@ -34,14 +34,23 @@ const detectionModelSelect    = document.getElementById("detectionModel");
 const ollamaApiKeyInput       = document.getElementById("ollamaApiKey");
 const libreUrlInput           = document.getElementById("libreUrl");
 const libreApiKeyInput        = document.getElementById("libreApiKey");
+const googleFallbackSelect    = document.getElementById("googleFallbackService");
+const tencentSecretIdInput    = document.getElementById("tencentSecretId");
+const tencentSecretKeyInput   = document.getElementById("tencentSecretKey");
+const tencentRegionInput      = document.getElementById("tencentRegion");
+const tencentProjectIdInput   = document.getElementById("tencentProjectId");
+const importZoteroTencentBtn  = document.getElementById("importZoteroTencent");
+const zoteroPrefsFileInput    = document.getElementById("zoteroPrefsFile");
 const refreshBtn              = document.getElementById("refreshModels");
 const refreshDetectionBtn     = document.getElementById("refreshDetectionModels");
 const testBtn                 = document.getElementById("testConnection");
 const testLibreBtn            = document.getElementById("testLibreConnection");
+const testTencentBtn          = document.getElementById("testTencentConnection");
 const saveBtn                 = document.getElementById("save");
 const statusDiv               = document.getElementById("status");
 const ollamaTestStatus        = document.getElementById("ollamaTestStatus");
 const libreTestStatus         = document.getElementById("libreTestStatus");
+const tencentTestStatus       = document.getElementById("tencentTestStatus");
 const serviceRadios           = document.querySelectorAll("input[name='service']");
 const ollamaTranslatePromptTA = document.getElementById("ollamaTranslatePrompt");
 const ollamaDetectPromptTA    = document.getElementById("ollamaDetectPrompt");
@@ -56,6 +65,11 @@ function showStatus(messageKey, isError, replacements = {}) {
 function clearStatus() {
   statusDiv.className = "status";
   statusDiv.textContent = "";
+}
+
+function showStatusText(message, isError) {
+  statusDiv.textContent = message;
+  statusDiv.className = "status " + (isError ? "error" : "success");
 }
 
 // --- Service radio helpers ---
@@ -82,6 +96,11 @@ async function loadSettings() {
     libreUrl: "https://libretranslate.com",
     libreApiKey: "",
     service: "google",
+    googleFallbackService: "microsoft",
+    tencentSecretId: "",
+    tencentSecretKey: "",
+    tencentRegion: "ap-shanghai",
+    tencentProjectId: "0",
     ollamaTranslatePrompt: "",
     ollamaDetectPrompt: "",
   });
@@ -90,6 +109,11 @@ async function loadSettings() {
   ollamaApiKeyInput.value = settings.ollamaApiKey;
   libreUrlInput.value = settings.libreUrl;
   libreApiKeyInput.value = settings.libreApiKey;
+  googleFallbackSelect.value = settings.googleFallbackService;
+  tencentSecretIdInput.value = settings.tencentSecretId;
+  tencentSecretKeyInput.value = settings.tencentSecretKey;
+  tencentRegionInput.value = settings.tencentRegion;
+  tencentProjectIdInput.value = settings.tencentProjectId;
   ollamaTranslatePromptTA.value = settings.ollamaTranslatePrompt || DEFAULT_TRANSLATE_PROMPT;
   ollamaDetectPromptTA.value    = settings.ollamaDetectPrompt    || DEFAULT_DETECT_PROMPT;
   setSelectedService(settings.service);
@@ -97,6 +121,58 @@ async function loadSettings() {
   await loadModels(settings.model);
   await loadDetectionModels(settings.detectionModel);
 }
+
+function readZoteroPreference(contents, preferenceName) {
+  const escapedName = preferenceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = contents.match(new RegExp(
+    `^user_pref\\("${escapedName}",\\s*(.*)\\);$`,
+    "m"
+  ));
+  if (!match) return "";
+
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return "";
+  }
+}
+
+importZoteroTencentBtn.addEventListener("click", () => {
+  clearStatus();
+  zoteroPrefsFileInput.value = "";
+  zoteroPrefsFileInput.click();
+});
+
+zoteroPrefsFileInput.addEventListener("change", async () => {
+  clearStatus();
+  const file = zoteroPrefsFileInput.files?.[0];
+  if (!file) return;
+
+  let contents = "";
+  try {
+    contents = await file.text();
+    const prefix = "extensions.zotero.ZoteroPDFTranslate.tencent.";
+    const secretId = readZoteroPreference(contents, prefix + "secretId");
+    const secretKey = readZoteroPreference(contents, prefix + "secretKey");
+    const region = readZoteroPreference(contents, prefix + "region") || "ap-shanghai";
+    const projectId = readZoteroPreference(contents, prefix + "projectId") || "0";
+
+    if (!secretId || !secretKey) {
+      throw new Error("Tencent SecretId or SecretKey was not found in the selected Zotero prefs.js.");
+    }
+
+    tencentSecretIdInput.value = secretId;
+    tencentSecretKeyInput.value = secretKey;
+    tencentRegionInput.value = region;
+    tencentProjectIdInput.value = projectId;
+    showStatusText("Tencent settings imported. Click Save to store them in Thunderbird.", false);
+  } catch (error) {
+    showStatusText(error.message, true);
+  } finally {
+    contents = "";
+    zoteroPrefsFileInput.value = "";
+  }
+});
 
 // --- Models ---
 async function loadModels(selectedModel, ollamaUrl) {
@@ -226,6 +302,28 @@ testLibreBtn.addEventListener("click", async () => {
   }
 });
 
+testTencentBtn.addEventListener("click", async () => {
+  const tencentSecretId = tencentSecretIdInput.value.trim();
+  const tencentSecretKey = tencentSecretKeyInput.value.trim();
+  if (!tencentSecretId || !tencentSecretKey) {
+    showInlineStatus(tencentTestStatus, "SecretId and SecretKey are required.", true);
+    return;
+  }
+
+  const result = await browser.runtime.sendMessage({
+    command: "testTencentConnection",
+    tencentSecretId,
+    tencentSecretKey,
+    tencentRegion: tencentRegionInput.value.trim() || "ap-shanghai",
+    tencentProjectId: tencentProjectIdInput.value.trim() || "0",
+  });
+  showInlineStatus(
+    tencentTestStatus,
+    result.success ? "Connected successfully." : `Connection failed: ${result.error}`,
+    !result.success
+  );
+});
+
 saveBtn.addEventListener("click", async () => {
   clearStatus();
 
@@ -236,6 +334,11 @@ saveBtn.addEventListener("click", async () => {
   const ollamaApiKey        = ollamaApiKeyInput.value.trim();
   const libreUrl            = libreUrlInput.value.trim();
   const libreApiKey         = libreApiKeyInput.value.trim();
+  const googleFallbackService = googleFallbackSelect.value;
+  const tencentSecretId     = tencentSecretIdInput.value.trim();
+  const tencentSecretKey    = tencentSecretKeyInput.value.trim();
+  const tencentRegion       = tencentRegionInput.value.trim() || "ap-shanghai";
+  const tencentProjectId    = tencentProjectIdInput.value.trim() || "0";
   const ollamaTranslatePrompt = ollamaTranslatePromptTA.value.trim();
   const ollamaDetectPrompt    = ollamaDetectPromptTA.value.trim();
 
@@ -245,11 +348,16 @@ saveBtn.addEventListener("click", async () => {
   if (service === "libretranslate" && !libreUrl) {
     showStatus("urlRequired", true); return;
   }
+  if (service === "tencent" && (!tencentSecretId || !tencentSecretKey)) {
+    showStatusText("Tencent SecretId and SecretKey are required.", true); return;
+  }
 
   await browser.runtime.sendMessage({
     command: "saveSettings",
     ollamaUrl, model, detectionModel, ollamaApiKey,
     libreUrl, libreApiKey, service,
+    googleFallbackService,
+    tencentSecretId, tencentSecretKey, tencentRegion, tencentProjectId,
     ollamaTranslatePrompt, ollamaDetectPrompt,
   });
 

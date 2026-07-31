@@ -4,6 +4,40 @@ const DEFAULT_OLLAMA_URL = "http://localhost:11434";
 const DEFAULT_MODEL = "translategemma";
 const DEFAULT_SERVICE = "google";
 const DEFAULT_LIBRE_URL = "https://libretranslate.com";
+const DEFAULT_TENCENT_REGION = "ap-shanghai";
+const DEFAULT_TENCENT_PROJECT_ID = "0";
+
+const SERVICE_INFO = {
+  ollama: {
+    label: "Ollama",
+    urlKey: "ollamaUrl",
+    targetLangKey: "ollamaTargetLang",
+    composeLangKey: "ollamaComposeLang",
+  },
+  google: {
+    label: "Google Translate",
+    targetLangKey: "googleTargetLang",
+    composeLangKey: "googleComposeLang",
+  },
+  libretranslate: {
+    label: "LibreTranslate",
+    urlKey: "libreUrl",
+    targetLangKey: "libreTargetLang",
+    composeLangKey: "libreComposeLang",
+  },
+  microsoft: {
+    label: "Microsoft Translator",
+    serviceUrl: "https://www.microsoft.com/translator/",
+    targetLangKey: "microsoftTargetLang",
+    composeLangKey: "microsoftComposeLang",
+  },
+  tencent: {
+    label: "Tencent Cloud Translation",
+    serviceUrl: "https://cloud.tencent.com/product/tmt",
+    targetLangKey: "tencentTargetLang",
+    composeLangKey: "tencentComposeLang",
+  },
+};
 
 const DEFAULT_TRANSLATE_PROMPT =
 `You are a professional {SOURCE_LANG} ({SOURCE_CODE}) to {TARGET_LANG} ({TARGET_CODE}) translator. Your goal is to accurately convey the meaning and nuances of the original {SOURCE_LANG} text while adhering to {TARGET_LANG} grammar, vocabulary, and cultural sensitivities.
@@ -59,12 +93,16 @@ const LANG_STORAGE_KEY = {
   ollama: "ollamaTargetLang",
   google: "googleTargetLang",
   libretranslate: "libreTargetLang",
+  microsoft: "microsoftTargetLang",
+  tencent: "tencentTargetLang",
 };
 
 const COMPOSE_LANG_KEY = {
   ollama: "ollamaComposeLang",
   google: "googleComposeLang",
   libretranslate: "libreComposeLang",
+  microsoft: "microsoftComposeLang",
+  tencent: "tencentComposeLang",
 };
 
 // --- Settings ---
@@ -75,6 +113,8 @@ async function updateReadButtonTitle() {
     ollamaTargetLang: "en",
     googleTargetLang: "en",
     libreTargetLang: "en",
+    microsoftTargetLang: "en",
+    tencentTargetLang: "en",
   });
   const langKey = LANG_STORAGE_KEY[settings.service] || "googleTargetLang";
   const lang = (settings[langKey] || "en").toUpperCase();
@@ -87,6 +127,8 @@ async function updateComposeButtonTitle() {
     ollamaComposeLang: "en",
     googleComposeLang: "en",
     libreComposeLang: "en",
+    microsoftComposeLang: "en",
+    tencentComposeLang: "en",
   });
   const langKey = COMPOSE_LANG_KEY[settings.service] || "googleComposeLang";
   const lang = (settings[langKey] || "en").toUpperCase();
@@ -102,12 +144,21 @@ async function getSettings() {
     ollamaTargetLang: "en",
     googleTargetLang: "en",
     libreTargetLang: "en",
+    microsoftTargetLang: "en",
+    tencentTargetLang: "en",
     ollamaComposeLang: "en",
     googleComposeLang: "en",
     libreComposeLang: "en",
+    microsoftComposeLang: "en",
+    tencentComposeLang: "en",
     libreUrl: DEFAULT_LIBRE_URL,
     ollamaApiKey: "",
     libreApiKey: "",
+    googleFallbackService: "microsoft",
+    tencentSecretId: "",
+    tencentSecretKey: "",
+    tencentRegion: DEFAULT_TENCENT_REGION,
+    tencentProjectId: DEFAULT_TENCENT_PROJECT_ID,
     autoTranslate: false,
     neverTranslateLangs: [],
     ollamaTranslatePrompt: "",
@@ -246,12 +297,19 @@ messenger.runtime.onConnect.addListener((port) => {
         try {
           const settings = await getSettings();
           const sourceLang = tabId != null ? (detectedLangByTab.get(tabId) || null) : null;
-          const { translated, detectedLang } = await translateText(message.text, settings, null, sourceLang);
+          const result = await translateText(message.text, settings, null, sourceLang);
+          const { translated, detectedLang } = result;
           // Cache detected lang from translation response (Google / LT)
           if (tabId != null && detectedLang && !detectedLangByTab.has(tabId)) {
             detectedLangByTab.set(tabId, detectedLang);
           }
-          port.postMessage({ id: message.id, success: true, translated });
+          port.postMessage({
+            id: message.id,
+            success: true,
+            translated,
+            provider: result.provider,
+            fallbackFrom: result.fallbackFrom || null,
+          });
         } catch (e) {
           port.postMessage({ id: message.id, success: false, error: e.message });
         }
@@ -303,13 +361,23 @@ messenger.runtime.onConnect.addListener((port) => {
           }
           const settings = await getSettings();
           const sourceLang = tabId != null ? (detectedLangByTab.get(tabId) || null) : null;
-          const { translated } = await translateText(subject, settings, null, sourceLang);
-          const SERVICE_LABELS = { ollama: "Ollama", google: "Google Translate", libretranslate: "LibreTranslate" };
-          const serviceLabel = SERVICE_LABELS[settings.service] || settings.service;
-          const serviceUrl = settings.service === "ollama" ? settings.ollamaUrl
-            : settings.service === "libretranslate" ? settings.libreUrl
-            : null;
-          port.postMessage({ id: message.id, success: true, translated, serviceLabel, serviceUrl });
+          const result = await translateText(subject, settings, null, sourceLang);
+          const actualService = result.provider || settings.service;
+          const actualInfo = SERVICE_INFO[actualService] || { label: actualService };
+          const fallbackInfo = result.fallbackFrom ? SERVICE_INFO[result.fallbackFrom] : null;
+          const serviceLabel = fallbackInfo
+            ? `${actualInfo.label} (fallback from ${fallbackInfo.label})`
+            : actualInfo.label;
+          const serviceUrl = actualInfo.urlKey
+            ? settings[actualInfo.urlKey]
+            : actualInfo.serviceUrl || null;
+          port.postMessage({
+            id: message.id,
+            success: true,
+            translated: result.translated,
+            serviceLabel,
+            serviceUrl,
+          });
         } catch (e) {
           port.postMessage({ id: message.id, success: false, error: e.message });
         }
@@ -462,17 +530,53 @@ async function translateWithLibreTranslate(text, targetLanguage, libreUrl, libre
   throw new Error("Invalid response from LibreTranslate");
 }
 
-async function translateText(text, settings, targetLangOverride, sourceLang) {
-  const { service, ollamaTargetLang, googleTargetLang, libreTargetLang, libreUrl, libreApiKey } = settings;
-  const targetLang = targetLangOverride
-    || { ollama: ollamaTargetLang, google: googleTargetLang, libretranslate: libreTargetLang }[service]
-    || "en";
+async function translateUsingService(service, text, targetLang, settings, sourceLang) {
+  let result;
   switch (service) {
-    case "ollama":         return translateWithOllama(text, { ...settings, targetLanguage: targetLang, sourceLang: sourceLang || null });
-    case "google":         return translateWithGoogle(text, targetLang);
-    case "libretranslate": return translateWithLibreTranslate(text, targetLang, libreUrl, libreApiKey);
-    default: throw new Error(`Unknown service: ${service}`);
+    case "ollama":
+      result = await translateWithOllama(text, {
+        ...settings,
+        targetLanguage: targetLang,
+        sourceLang: sourceLang || null,
+      });
+      break;
+    case "google":
+      result = await translateWithGoogle(text, targetLang);
+      break;
+    case "libretranslate":
+      result = await translateWithLibreTranslate(
+        text,
+        targetLang,
+        settings.libreUrl,
+        settings.libreApiKey
+      );
+      break;
+    case "microsoft":
+      result = await TranslatorProviders.translateWithMicrosoft(text, targetLang);
+      break;
+    case "tencent":
+      result = await TranslatorProviders.translateWithTencent(text, targetLang, settings);
+      break;
+    default:
+      throw new Error(`Unknown service: ${service}`);
   }
+  return { ...result, provider: service, fallbackFrom: null };
+}
+
+async function translateText(text, settings, targetLangOverride, sourceLang) {
+  const service = settings.service || DEFAULT_SERVICE;
+  const serviceInfo = SERVICE_INFO[service];
+  if (!serviceInfo) throw new Error(`Unknown service: ${service}`);
+
+  const targetLang = targetLangOverride || settings[serviceInfo.targetLangKey] || "en";
+  return TranslatorRouter.translateWithFallback({
+    service,
+    text,
+    targetLang,
+    settings,
+    sourceLang,
+    translateUsingService,
+  });
 }
 
 // --- Ollama language detection (separate from translation) ---
@@ -719,7 +823,8 @@ messenger.messageDisplayAction.onClicked.addListener(async (tab) => {
       messenger.messageDisplayAction.setBadgeText({ tabId, text: "" });
     } else {
       const settings = await getSettings();
-      const targetLang = { ollama: settings.ollamaTargetLang, google: settings.googleTargetLang, libretranslate: settings.libreTargetLang }[settings.service] || "en";
+      const langKey = SERVICE_INFO[settings.service]?.targetLangKey || "googleTargetLang";
+      const targetLang = settings[langKey] || "en";
       const result = await sendToTabPort(tabId, "doTranslate", { targetLang });
       if (result.success) {
         messenger.messageDisplayAction.setBadgeText({ tabId, text: "✓" });
@@ -775,6 +880,19 @@ messenger.runtime.onMessage.addListener(async (message) => {
       return { success: true, models: await getInstalledModels(message.ollamaUrl) };
     } catch (e) { return { success: false, error: e.message }; }
   }
+  if (message.command === "testTencentConnection") {
+    try {
+      await TranslatorProviders.translateWithTencent("connection test", "zh", {
+        tencentSecretId: message.tencentSecretId,
+        tencentSecretKey: message.tencentSecretKey,
+        tencentRegion: message.tencentRegion,
+        tencentProjectId: message.tencentProjectId,
+      });
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  }
   if (message.command === "saveSettings") {
     await messenger.storage.local.set({
       ollamaUrl:             message.ollamaUrl,
@@ -784,6 +902,11 @@ messenger.runtime.onMessage.addListener(async (message) => {
       libreUrl:              message.libreUrl,
       libreApiKey:           message.libreApiKey,
       service:               message.service,
+      googleFallbackService: message.googleFallbackService,
+      tencentSecretId:       message.tencentSecretId,
+      tencentSecretKey:      message.tencentSecretKey,
+      tencentRegion:         message.tencentRegion,
+      tencentProjectId:      message.tencentProjectId,
       ollamaTranslatePrompt: message.ollamaTranslatePrompt,
       ollamaDetectPrompt:    message.ollamaDetectPrompt,
     });
