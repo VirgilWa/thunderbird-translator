@@ -78,7 +78,7 @@ function getSelectedService() {
   for (const r of serviceRadios) {
     if (r.checked) return r.value;
   }
-  return "google";
+  return "microsoft";
 }
 
 function setSelectedService(service) {
@@ -96,7 +96,7 @@ async function loadSettings() {
     ollamaApiKey: "",
     libreUrl: "https://libretranslate.com",
     libreApiKey: "",
-    service: "google",
+    service: "microsoft",
     googleFallbackService: "microsoft",
     tencentSecretId: "",
     tencentSecretKey: "",

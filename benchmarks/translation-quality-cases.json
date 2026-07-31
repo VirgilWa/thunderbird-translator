@@ -1,0 +1,91 @@
+[
+  {
+    "id": "en-zh-deadline",
+    "direction": "en-zh",
+    "category": "academic deadline",
+    "source": "The submission deadline has been extended to 23:59 (Anywhere on Earth) on 15 August 2026. Papers that are incomplete at the deadline will not be considered, even if an abstract was registered earlier.",
+    "critical_checks": [
+      "The new deadline is 23:59 Anywhere on Earth on 15 August 2026.",
+      "Incomplete papers are excluded despite earlier abstract registration.",
+      "The condition and exception must not be reversed."
+    ]
+  },
+  {
+    "id": "en-zh-technical",
+    "direction": "en-zh",
+    "category": "antenna engineering",
+    "source": "The proposed conformal SIW antenna maintains |S11| below -10 dB from 24.8 to 27.2 GHz under a bending radius of 30 mm. The measured realized gain decreases by only 0.7 dB, indicating that the observed detuning is primarily caused by connector repeatability rather than substrate deformation.",
+    "critical_checks": [
+      "Preserve SIW, |S11|, -10 dB, 24.8–27.2 GHz, 30 mm, and 0.7 dB.",
+      "Use established antenna terms for realized gain and detuning.",
+      "Connector repeatability, not substrate deformation, is identified as the primary cause."
+    ]
+  },
+  {
+    "id": "en-zh-review",
+    "direction": "en-zh",
+    "category": "peer review",
+    "source": "Thank you for the careful revision. Before we can make a final decision, please clarify whether the comparison in Table III uses the same calibration procedure for all baselines. If not, temper the claim of superior accuracy.",
+    "critical_checks": [
+      "The editor asks whether all baselines use the same calibration procedure.",
+      "If they do not, the superior-accuracy claim should be weakened rather than removed or strengthened.",
+      "Maintain a professional review tone."
+    ]
+  },
+  {
+    "id": "en-zh-schedule",
+    "direction": "en-zh",
+    "category": "meeting coordination",
+    "source": "Could we move Thursday's meeting to 14:30 Beijing time? If that does not work, I am available Friday morning except between 10:00 and 11:00. Please keep Prof. Li copied on the reply.",
+    "critical_checks": [
+      "Thursday is proposed at 14:30 Beijing time.",
+      "Friday morning is available except 10:00–11:00.",
+      "Prof. Li should remain copied on the reply."
+    ]
+  },
+  {
+    "id": "en-zh-format",
+    "direction": "en-zh",
+    "category": "instructions and formatting",
+    "source": "Please send the following before noon:\n1. the signed consent form;\n2. the raw CSV files, not screenshots; and\n3. a one-paragraph explanation of the two excluded trials.\nDo not rename the participant IDs.",
+    "critical_checks": [
+      "Preserve all three numbered requirements.",
+      "Raw CSV files are required and screenshots are explicitly rejected.",
+      "Exactly two excluded trials require a one-paragraph explanation.",
+      "Participant IDs must not be renamed."
+    ]
+  },
+  {
+    "id": "zh-en-extension",
+    "direction": "zh-en",
+    "category": "extension request",
+    "source": "由于补充实验仍在排队，能否将修改稿提交期限延长至8月12日？我们已经完成正文修改，只剩弯曲半径为20 mm时的重复性测试。若无法延期，我们会按原期限提交现有结果，并在回复信中说明限制。",
+    "critical_checks": [
+      "Request an extension to 12 August because supplementary experiments are queued.",
+      "Only the repeatability test at a 20 mm bending radius remains.",
+      "If denied, submit existing results by the original deadline and disclose the limitation in the response letter."
+    ]
+  },
+  {
+    "id": "zh-en-method",
+    "direction": "zh-en",
+    "category": "technical argument",
+    "source": "该方法并不是利用温度直接补偿谐振频率，而是先根据多通道散射参数估计形变状态，再选择对应的匹配网络。因此，“温度鲁棒”不应被表述为“与温度无关”。",
+    "critical_checks": [
+      "The method does not directly compensate resonant frequency using temperature.",
+      "It first estimates deformation from multichannel scattering parameters, then selects a matching network.",
+      "Temperature-robust must not be rendered as temperature-independent."
+    ]
+  },
+  {
+    "id": "zh-en-procurement",
+    "direction": "zh-en",
+    "category": "procurement instruction",
+    "source": "请确认附件中的预算是否已经包含加工费和税费。如果报价仅含材料费，请不要直接下单，先让供应商分别列出三项费用。",
+    "critical_checks": [
+      "Confirm whether processing fees and taxes are included.",
+      "Do not place the order if the quotation contains only material costs.",
+      "Ask the supplier to itemize all three cost categories first."
+    ]
+  }
+]

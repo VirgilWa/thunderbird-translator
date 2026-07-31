@@ -2,7 +2,7 @@
 
 const DEFAULT_OLLAMA_URL = "http://localhost:11434";
 const DEFAULT_MODEL = "translategemma";
-const DEFAULT_SERVICE = "google";
+const DEFAULT_SERVICE = "microsoft";
 const DEFAULT_LIBRE_URL = "https://libretranslate.com";
 const DEFAULT_TENCENT_REGION = "ap-shanghai";
 const DEFAULT_TENCENT_PROJECT_ID = "0";

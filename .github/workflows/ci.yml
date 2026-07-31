@@ -22,10 +22,12 @@ jobs:
         run: |
           node --check providers.js
           node --check translation-router.js
+          node --check benchmarks/run-live-benchmark.js
           node --check background.js
           node --check options/options.js
           node --check content/translator.js
           node --check content/composer.js
+          node -e "JSON.parse(require('node:fs').readFileSync('benchmarks/translation-quality-cases.json', 'utf8'))"
 
       - name: Run unit tests
         run: node --test tests/providers.test.js tests/translation-router.test.js

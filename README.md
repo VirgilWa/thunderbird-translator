@@ -56,7 +56,7 @@
 
 ## ⚙️ Configuration
 
-> **Default service is Google Translate with Microsoft fallback enabled.** On a fresh install, email text is sent to Google and, if Google fails, to Microsoft. For private or sensitive emails, configure a local Ollama or self-hosted LibreTranslate service first.
+> **Default service is Microsoft Translator.** A small blind email benchmark found it strongest overall, especially for Chinese-to-English writing, and it is currently faster and more reliable than the other zero-configuration option. For private or sensitive emails, configure a local Ollama or self-hosted LibreTranslate service first.
 
 Open **Menu → Tools → Add-ons → Thunderbird Translator → Preferences**.
 
@@ -111,6 +111,16 @@ Tencent is a metered service and is never used as an automatic fallback. Its leg
 ### Google fallback
 
 Choose whether a Google failure should use Microsoft Translator or show the original Google error. Tencent is intentionally not offered as an automatic fallback.
+
+### Provider selection
+
+The reproducible corpus in [`benchmarks/translation-quality-cases.json`](benchmarks/translation-quality-cases.json) covers academic notices, antenna engineering, peer review, scheduling, formatting, extension requests, technical argumentation, and procurement instructions.
+
+In the 2026-07-31 blind run, Microsoft won 5 of 8 cases and all 3 Chinese-to-English cases. Tencent was marginally stronger for English-to-Chinese overall and preserved numbers and symbols better, but was less fluent. These results are a practical routing baseline, not a universal quality guarantee:
+
+- use **Microsoft** as the general default and for Chinese-to-English composing
+- consider **Tencent** for English-to-Chinese technical reading when symbol fidelity is especially important
+- manually review either provider for publication-critical technical text
 
 ---
 
@@ -203,6 +213,11 @@ Highlight text in the compose body *before* clicking the Translate button in the
 ---
 
 ## 📜 Changelog
+
+### v1.8.3.3 (fork — VirgilWa)
+- Changed the fresh-install default from unavailable Google to Microsoft based on a blind email-quality benchmark
+- Added a reproducible eight-case bidirectional quality corpus and live benchmark runner
+- Documented direction-specific provider guidance and critical technical-translation limitations
 
 ### v1.8.3.2 (fork — VirgilWa)
 - Record Tencent's API-reported `UsedAmount` after successful calls
