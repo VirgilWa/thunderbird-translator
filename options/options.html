@@ -68,6 +68,7 @@
     }
 
     input[type="text"],
+    input[type="password"],
     select,
     textarea {
       width: 100%;
@@ -218,99 +219,49 @@
 <body>
   <h2 data-i18n="appName"></h2>
 
-  <!-- Ollama -->
+  <!-- Microsoft Translator -->
   <div class="service-section">
     <label class="service-header">
-      <input type="radio" name="service" value="ollama" id="radio-ollama">
-      Ollama
+      <input type="radio" name="service" value="microsoft" id="radio-microsoft">
+      Microsoft Translator
     </label>
     <div class="service-config">
-      <div class="field">
-        <label for="ollamaUrl" data-i18n="ollamaUrl"></label>
-        <input type="text" id="ollamaUrl" placeholder="http://localhost:11434">
-        <p class="field-hint">e.g. <code>http://localhost:11434</code> (local machine)<br>
-        or <code>https://ollama.yourhomelab.com</code> (private server)</p>
-      </div>
-      <div class="field">
-        <label for="model">Translate Model</label>
-        <div class="input-row">
-          <select id="model">
-            <option value="" data-i18n="selectModel"></option>
-          </select>
-          <button id="refreshModels" title-i18n="refresh">&#x21bb;</button>
-        </div>
-      </div>
-      <div class="field">
-        <label for="detectionModel">Detection Model <span style="font-weight:normal;color:#666">(optional — defaults to Translate Model)</span></label>
-        <div class="input-row">
-          <select id="detectionModel">
-            <option value="">Same as Translate Model</option>
-          </select>
-          <button id="refreshDetectionModels" title-i18n="refresh">&#x21bb;</button>
-        </div>
-        <p class="field-hint">Used only for auto-translate language detection (Never/Always auto-translate). Leave blank to use the same model as translation.</p>
-      </div>
-<div class="field">
-        <label for="ollamaApiKey">API Key <span style="font-weight:normal;color:#666">(optional)</span></label>
-        <div class="input-row">
-          <input type="text" id="ollamaApiKey" placeholder="Leave blank if not required">
-          <button id="testConnection" data-i18n="testConnection"></button>
-        </div>
-        <div id="ollamaTestStatus" class="status"></div>
-      </div>
-
-      <!-- Advanced: custom prompts -->
-      <details class="advanced-section">
-        <summary>Advanced: custom prompts</summary>
-        <div class="advanced-content">
-          <div class="field">
-            <label for="ollamaTranslatePrompt">Translation prompt</label>
-            <textarea id="ollamaTranslatePrompt" rows="7" placeholder="Leave blank to use the built-in default"></textarea>
-            <p class="field-hint">Variables: <code>{TEXT}</code> (email content), <code>{TARGET_LANG}</code> (e.g. "English"), <code>{TARGET_CODE}</code> (e.g. "EN"), <code>{SOURCE_LANG}</code> (source language name, if known), <code>{SOURCE_CODE}</code> (source code, if known). Clear field to restore default.</p>
-          </div>
-          <div class="field">
-            <label for="ollamaDetectPrompt">Detection prompt</label>
-            <textarea id="ollamaDetectPrompt" rows="6" placeholder="Leave blank to use the built-in default"></textarea>
-            <p class="field-hint">Used for language detection (Never/Always auto-translate). Variable: <code>{TEXT}</code> (sample of email content). Model must reply with a 2-letter ISO 639-1 code. Clear field to restore default.</p>
-          </div>
-        </div>
-      </details>
+      <p class="privacy-note">⚠ No API key is required. Message content is sent to Microsoft's translation service.</p>
     </div>
   </div>
 
-  <!-- LibreTranslate -->
+  <!-- Tencent Cloud Translation -->
   <div class="service-section">
     <label class="service-header">
-      <input type="radio" name="service" value="libretranslate" id="radio-libretranslate">
-      LibreTranslate
+      <input type="radio" name="service" value="tencent" id="radio-tencent">
+      Tencent Cloud Translation
     </label>
     <div class="service-config">
+      <p class="privacy-note">⚠ Metered service. It is never used as an automatic fallback. Credentials are stored in the Thunderbird profile and are not encrypted by this add-on.</p>
       <div class="field">
-        <label for="libreUrl">Server URL</label>
-        <input type="text" id="libreUrl" placeholder="https://libretranslate.yourhomelab.com">
-        <p class="field-hint">e.g. <code>https://libretranslate.yourhomelab.com</code> (private server)<br>
-        or <code>https://libretranslate.com</code> (public server)</p>
+        <label for="tencentSecretId">SecretId</label>
+        <input type="password" id="tencentSecretId" autocomplete="new-password">
       </div>
-      <p class="privacy-note">⚠ If using the public server (libretranslate.com), message content is sent to their servers.</p>
       <div class="field">
-        <label for="libreApiKey">API Key <span style="font-weight:normal;color:#666">(optional)</span></label>
-        <div class="input-row">
-          <input type="text" id="libreApiKey" placeholder="Leave blank if not required">
-          <button id="testLibreConnection">Test Connection</button>
-        </div>
-        <div id="libreTestStatus" class="status"></div>
+        <label for="tencentSecretKey">SecretKey</label>
+        <input type="password" id="tencentSecretKey" autocomplete="new-password">
       </div>
-    </div>
-  </div>
-
-  <!-- Google Translate -->
-  <div class="service-section">
-    <label class="service-header">
-      <input type="radio" name="service" value="google" id="radio-google">
-      Google Translate
-    </label>
-    <div class="service-config">
-      <p class="privacy-note">⚠ No configuration required, but message content is sent to Google's servers.</p>
+      <div class="field">
+        <label for="tencentRegion">Region</label>
+        <input type="text" id="tencentRegion" placeholder="ap-shanghai">
+      </div>
+      <div class="field">
+        <label for="tencentProjectId">ProjectId</label>
+        <input type="text" id="tencentProjectId" placeholder="0">
+      </div>
+      <input type="file" id="zoteroPrefsFile" accept=".js" hidden>
+      <div class="input-row">
+        <button id="importZoteroTencent">Import from Zotero prefs.js</button>
+        <button id="testTencentConnection">Test Connection</button>
+      </div>
+      <div id="tencentTestStatus" class="status"></div>
+      <p class="field-hint">Import reads a user-selected Zotero <code>prefs.js</code> once. The file is not retained or uploaded.</p>
+      <p id="tencentUsage" class="field-hint"></p>
     </div>
   </div>
 

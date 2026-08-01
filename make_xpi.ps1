@@ -15,6 +15,8 @@ $zip = [System.IO.Compression.ZipFile]::Open($xpiPath, 'Create')
 # Files to include
 $includes = @(
     'manifest.json',
+    'providers.js',
+    'translation-router.js',
     'background.js',
     'content\translator.js',
     'content\composer.js',
@@ -31,16 +33,6 @@ foreach ($rel in $includes) {
         Write-Host "Added: $rel"
     } else {
         Write-Host "MISSING: $rel"
-    }
-}
-
-# Add all _docs files (screenshots)
-$docsPath = Join-Path $src '_docs'
-if (Test-Path $docsPath) {
-    Get-ChildItem -Path $docsPath -Recurse -File | ForEach-Object {
-        $rel = $_.FullName.Substring($src.Length + 1).Replace('\','/')
-        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $_.FullName, $rel, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
-        Write-Host "Added: $rel"
     }
 }
 

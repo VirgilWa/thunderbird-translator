@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Check JavaScript syntax
+        shell: pwsh
+        run: |
+          node --check providers.js
+          node --check translation-router.js
+          node --check benchmarks/run-live-benchmark.js
+          node --check background.js
+          node --check options/options.js
+          node --check content/translator.js
+          node --check content/composer.js
+          node -e "JSON.parse(require('node:fs').readFileSync('benchmarks/translation-quality-cases.json', 'utf8'))"
+
+      - name: Run unit tests
+        run: node --test tests/providers.test.js tests/translation-router.test.js
+
+      - name: Build XPI
+        shell: pwsh
+        run: ./make_xpi.ps1
+
+      - name: Validate XPI structure
+        shell: pwsh
+        run: |
+          $manifest = Get-Content -Raw -LiteralPath manifest.json | ConvertFrom-Json
+          $xpi = "thunderbird-translator-v$($manifest.version).xpi"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $xpi))
+          try {
+            $entries = $zip.Entries.FullName
+            @('manifest.json', 'providers.js', 'translation-router.js', 'background.js') |
+              ForEach-Object {
+                if ($_ -notin $entries) { throw "Missing XPI entry: $_" }
+              }
+          } finally {
+            $zip.Dispose()
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: thunderbird-translator-xpi
+          path: thunderbird-translator-v*.xpi
