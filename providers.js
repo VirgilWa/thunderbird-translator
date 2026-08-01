@@ -11,6 +11,35 @@
   const DEFAULT_TENCENT_PROJECT_ID = "0";
   const DEFAULT_TIMEOUT_MS = 20000;
 
+  // UI language codes are kept stable across providers while API-specific
+  // aliases and capability limits stay in one testable policy surface.
+  const TARGET_LANGUAGE_CODES = Object.freeze({
+    microsoft: Object.freeze({
+      en: "en",
+      nl: "nl",
+      de: "de",
+      fr: "fr",
+      es: "es",
+      it: "it",
+      pt: "pt",
+      ru: "ru",
+      ja: "ja",
+      zh: "zh-Hans",
+      ko: "ko",
+      ar: "ar",
+      tr: "tr",
+      pl: "pl",
+      tl: "fil",
+    }),
+    // The legacy Tencent TextTranslate API uses a source-target matrix. With
+    // Source=auto, English and Simplified Chinese are the broadly safe targets
+    // for the extension's intended bidirectional email workflow.
+    tencent: Object.freeze({
+      en: "en",
+      zh: "zh",
+    }),
+  });
+
   let microsoftToken = "";
   let microsoftTokenExpiresAt = 0;
 
@@ -59,8 +88,25 @@
     }
   }
 
+  function targetLanguageCode(service, language) {
+    const codes = TARGET_LANGUAGE_CODES[service];
+    if (!codes || !Object.prototype.hasOwnProperty.call(codes, language)) {
+      throw new Error(`Unsupported target language for ${service}: ${language}`);
+    }
+    return codes[language];
+  }
+
+  function isTargetLanguageSupported(service, language) {
+    const codes = TARGET_LANGUAGE_CODES[service];
+    return !!codes && Object.prototype.hasOwnProperty.call(codes, language);
+  }
+
+  function getSupportedTargetLanguages(service) {
+    return Object.keys(TARGET_LANGUAGE_CODES[service] || {});
+  }
+
   function microsoftLanguageCode(language) {
-    return language === "zh" ? "zh-Hans" : language;
+    return targetLanguageCode("microsoft", language);
   }
 
   async function getMicrosoftToken(forceRefresh = false) {
@@ -217,7 +263,7 @@
       SecretId: tencentSecretId,
       Source: "auto",
       SourceText: text,
-      Target: targetLanguage,
+      Target: targetLanguageCode("tencent", targetLanguage),
       Timestamp: String(timestamp),
       Version: "2018-03-21",
     };
@@ -248,7 +294,9 @@
     const data = await response.json();
     if (data?.Response?.Error) {
       const code = data.Response.Error.Code || "UnknownError";
-      const retiredHint = /UnsupportedOperation|InvalidAction|ActionNotFound/i.test(code)
+      const retiredAction = code === "UnsupportedOperation" ||
+        /(?:^|\.)(?:InvalidAction|ActionNotFound)$/i.test(code);
+      const retiredHint = retiredAction
         ? " The legacy TextTranslate API may no longer be available."
         : "";
       throw new Error(`Tencent Translation error: ${code}.${retiredHint}`.trim());
@@ -316,6 +364,9 @@
     translateWithTencent,
     splitLongText,
     microsoftLanguageCode,
+    targetLanguageCode,
+    isTargetLanguageSupported,
+    getSupportedTargetLanguages,
     buildTencentRequest,
     resetMicrosoftTokenForTests,
     constants: {

@@ -69,24 +69,16 @@ const COMPOSE_LANG_KEY = {
 // --- Settings ---
 
 async function updateReadButtonTitle() {
-  const settings = await messenger.storage.local.get({
-    service: DEFAULT_SERVICE,
-    microsoftTargetLang: "en",
-    tencentTargetLang: "en",
-  });
-  const service = SERVICE_INFO[settings.service] ? settings.service : DEFAULT_SERVICE;
+  const settings = await getSettings();
+  const service = settings.service;
   const langKey = LANG_STORAGE_KEY[service];
   const lang = (settings[langKey] || "en").toUpperCase();
   messenger.messageDisplayAction.setTitle({ title: `Translate (${lang})` });
 }
 
 async function updateComposeButtonTitle() {
-  const settings = await messenger.storage.local.get({
-    service: DEFAULT_SERVICE,
-    microsoftComposeLang: "en",
-    tencentComposeLang: "en",
-  });
-  const service = SERVICE_INFO[settings.service] ? settings.service : DEFAULT_SERVICE;
+  const settings = await getSettings();
+  const service = settings.service;
   const langKey = COMPOSE_LANG_KEY[service];
   const lang = (settings[langKey] || "en").toUpperCase();
   messenger.composeAction.setTitle({ title: `Translate (${lang})` });
@@ -106,9 +98,21 @@ async function getSettings() {
     autoTranslate: false,
     neverTranslateLangs: [],
   });
+  const repairs = {};
   if (!SERVICE_INFO[settings.service]) {
     settings.service = DEFAULT_SERVICE;
-    await messenger.storage.local.set({ service: DEFAULT_SERVICE });
+    repairs.service = DEFAULT_SERVICE;
+  }
+  for (const [service, info] of Object.entries(SERVICE_INFO)) {
+    for (const key of [info.targetLangKey, info.composeLangKey]) {
+      if (!TranslatorProviders.isTargetLanguageSupported(service, settings[key])) {
+        settings[key] = "en";
+        repairs[key] = "en";
+      }
+    }
+  }
+  if (Object.keys(repairs).length > 0) {
+    await messenger.storage.local.set(repairs);
   }
   return settings;
 }
@@ -439,6 +443,9 @@ async function translateText(text, settings, targetLangOverride, sourceLang) {
   if (!serviceInfo) throw new Error(`Unknown service: ${service}`);
 
   const targetLang = targetLangOverride || settings[serviceInfo.targetLangKey] || "en";
+  if (!TranslatorProviders.isTargetLanguageSupported(service, targetLang)) {
+    throw new Error(`Unsupported target language for ${service}: ${targetLang}`);
+  }
   return TranslatorRouter.translateWithFallback({
     service,
     text,
@@ -525,7 +532,11 @@ browser.menus.onShown.addListener(async (info, tab) => {
     const readLangKey    = LANG_STORAGE_KEY[settings.service];
     const activeReadLang = settings[readLangKey] || "en";
     for (const lang of LANGUAGES) {
-      await browser.menus.update(`read-lang-${lang.value}`, { checked: lang.value === activeReadLang });
+      const visible = TranslatorProviders.isTargetLanguageSupported(settings.service, lang.value);
+      await browser.menus.update(`read-lang-${lang.value}`, {
+        checked: visible && lang.value === activeReadLang,
+        visible,
+      });
     }
 
     if (!settings.autoTranslate) {
@@ -563,7 +574,11 @@ browser.menus.onShown.addListener(async (info, tab) => {
     const composeLangKey    = COMPOSE_LANG_KEY[settings.service];
     const activeComposeLang = settings[composeLangKey] || "en";
     for (const lang of LANGUAGES) {
-      await browser.menus.update(`compose-lang-${lang.value}`, { checked: lang.value === activeComposeLang });
+      const visible = TranslatorProviders.isTargetLanguageSupported(settings.service, lang.value);
+      await browser.menus.update(`compose-lang-${lang.value}`, {
+        checked: visible && lang.value === activeComposeLang,
+        visible,
+      });
     }
   }
 
@@ -593,6 +608,10 @@ browser.menus.onClicked.addListener(async (info, tab) => {
   const normalizedService = SERVICE_INFO[service] ? service : DEFAULT_SERVICE;
   if (String(info.menuItemId).startsWith("read-lang-")) {
     const lang    = info.menuItemId.replace("read-lang-", "");
+    if (!TranslatorProviders.isTargetLanguageSupported(normalizedService, lang)) {
+      console.warn(`[Translator] Ignoring unsupported ${normalizedService} target language: ${lang}`);
+      return;
+    }
     const langKey = LANG_STORAGE_KEY[normalizedService];
     await messenger.storage.local.set({ [langKey]: lang });
     messenger.messageDisplayAction.setTitle({ title: `Translate (${lang.toUpperCase()})` });
@@ -600,6 +619,10 @@ browser.menus.onClicked.addListener(async (info, tab) => {
   }
   if (String(info.menuItemId).startsWith("compose-lang-")) {
     const lang    = info.menuItemId.replace("compose-lang-", "");
+    if (!TranslatorProviders.isTargetLanguageSupported(normalizedService, lang)) {
+      console.warn(`[Translator] Ignoring unsupported ${normalizedService} target language: ${lang}`);
+      return;
+    }
     const langKey = COMPOSE_LANG_KEY[normalizedService];
     await messenger.storage.local.set({ [langKey]: lang });
     messenger.composeAction.setTitle({ title: `Translate (${lang.toUpperCase()})` });

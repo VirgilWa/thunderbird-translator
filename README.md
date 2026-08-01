@@ -12,7 +12,7 @@ This is a focused fork of [jctots/thunderbird-translator](https://github.com/jct
 - Translate received email inline and restore it with one click
 - Translate selected text while composing
 - Optional automatic translation
-- 15 target languages
+- 15 Microsoft target languages, with a conservative English/Chinese Tencent menu
 - Per-provider target-language preferences
 
 ## Requirements
@@ -33,6 +33,10 @@ For temporary development loading, open **Debug Add-ons**, choose **Load Tempora
 Microsoft is the fresh-install default and requires no local configuration. Message content is sent to Microsoft's translation service.
 
 Tencent requires `SecretId`, `SecretKey`, `Region`, and `ProjectId`. The Options page can import these values once from a user-selected Zotero `prefs.js` file. The selected file is not retained or uploaded. Tencent is never selected automatically and is never used as a fallback.
+
+Microsoft keeps the full 15-language target menu and maps UI aliases to Microsoft's official API codes. Tencent uses automatic source detection, so its menu is intentionally limited to English and Simplified Chinese, the broadly supported directions used by this fork's email workflow.
+
+Tencent removed `TextTranslate` from its current API catalog on 8 July 2026. The legacy endpoint still worked for the account used in the 31 July benchmark, but Tencent support is a compatibility path and may stop working without notice.
 
 ### Provider selection
 
@@ -87,6 +91,8 @@ node --test tests/providers.test.js tests/translation-router.test.js
 
 - Limited the selectable and executable provider surface to Microsoft and Tencent.
 - Migrates any retired saved provider selection to Microsoft.
+- Uses provider-specific target-language menus and migrates unsupported saved targets to English.
+- Distinguishes unsupported Tencent target languages from legacy API retirement errors.
 - Removed unused provider configuration and narrowed network permissions.
 
 ### v1.8.3.3

@@ -26,9 +26,17 @@ test("splitLongText preserves content and respects the limit", () => {
   assert.equal(parts.join(""), input);
 });
 
-test("Microsoft maps simplified Chinese to zh-Hans", () => {
+test("provider language policy maps Microsoft aliases and limits Tencent", () => {
   assert.equal(providers.microsoftLanguageCode("zh"), "zh-Hans");
+  assert.equal(providers.microsoftLanguageCode("tl"), "fil");
   assert.equal(providers.microsoftLanguageCode("ja"), "ja");
+  assert.deepEqual(providers.getSupportedTargetLanguages("tencent"), ["en", "zh"]);
+  assert.equal(providers.isTargetLanguageSupported("microsoft", "pl"), true);
+  assert.equal(providers.isTargetLanguageSupported("tencent", "pl"), false);
+  assert.throws(
+    () => providers.targetLanguageCode("tencent", "nl"),
+    /Unsupported target language for tencent: nl/
+  );
 });
 
 test("Tencent signing is deterministic and never sends SecretKey", async () => {
@@ -80,6 +88,41 @@ test("Tencent exposes the API-reported UsedAmount", async () => {
     assert.equal(result.translated, "用量测试");
     assert.equal(result.detectedLang, "en");
     assert.equal(result.usedAmount, 10);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Tencent language errors are not misreported as API retirement", async () => {
+  const originalFetch = globalThis.fetch;
+  let code = "UnsupportedOperation.UnSupportedTargetLanguage";
+  globalThis.fetch = async () => fakeResponse({
+    json: { Response: { Error: { Code: code } } },
+  });
+  const settings = {
+    tencentSecretId: "test-id",
+    tencentSecretKey: "test-key",
+    tencentRegion: "ap-shanghai",
+    tencentProjectId: "0",
+  };
+
+  try {
+    await assert.rejects(
+      providers.translateWithTencent("hello", "zh", settings),
+      error => {
+        assert.equal(
+          error.message,
+          "Tencent Translation error: UnsupportedOperation.UnSupportedTargetLanguage."
+        );
+        return true;
+      }
+    );
+
+    code = "UnauthorizedOperation.ActionNotFound";
+    await assert.rejects(
+      providers.translateWithTencent("hello", "zh", settings),
+      /legacy TextTranslate API may no longer be available/
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
