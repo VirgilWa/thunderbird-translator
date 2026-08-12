@@ -12,6 +12,12 @@
 
   let savedSelection = "";
   let savedRange = null;
+  let isTranslating = false;
+
+  function i18n(key, substitutions = [], fallback = "") {
+    const translated = browser.i18n.getMessage(key, substitutions);
+    return translated || fallback || key;
+  }
 
   // --- Keep selection updated ---
   // In a designMode document, selectionchange fires normally.
@@ -39,18 +45,46 @@
       return;
     }
 
+    if (message.command === "doCancelSelection") {
+      for (const [id, pending] of pendingRequests.entries()) {
+        port.postMessage({ command: "cancelTranslate", id });
+        pending.reject(new Error("Translation cancelled"));
+      }
+      pendingRequests.clear();
+      port.postMessage({
+        command: "cancelSelectionDone",
+        reqId: message.reqId,
+        success: true,
+      });
+      return;
+    }
+
     // Translate selection command from popup (via background)
     if (message.command === "doTranslateSelection") {
+      if (isTranslating) {
+        port.postMessage({
+          command: "translateSelectionDone",
+          reqId: message.reqId,
+          success: false,
+          error: i18n("translationAlreadyInProgress", [], "Translation already in progress"),
+        });
+        return;
+      }
       if (!savedSelection || !savedRange) {
         port.postMessage({
           command: "translateSelectionDone",
           reqId: message.reqId,
           success: false,
-          error: "No text selected — highlight text in the email body first",
+          error: i18n(
+            "noTextSelected",
+            [],
+            "No text selected — highlight text in the email body first"
+          ),
         });
         return;
       }
 
+      isTranslating = true;
       try {
         const translated = await sendTranslateRequest(savedSelection);
 
@@ -69,8 +103,10 @@
           command: "translateSelectionDone",
           reqId: message.reqId,
           success: false,
-          error: e.message,
+          error: TranslatorRuntimePolicy.normalizeError(e),
         });
+      } finally {
+        isTranslating = false;
       }
       return;
     }

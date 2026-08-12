@@ -2,7 +2,6 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { randomInt } = require("node:crypto");
 const providers = require("../providers.js");
 
 function parseArgs(argv) {
@@ -18,15 +17,6 @@ function parseArgs(argv) {
   return args;
 }
 
-function readPreference(contents, name) {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = contents.match(new RegExp(
-    `^user_pref\\("${escaped}",\\s*(.*?)\\);\\r?$`,
-    "m"
-  ));
-  return match ? JSON.parse(match[1]) : "";
-}
-
 async function timedTranslate(fn) {
   const started = performance.now();
   try {
@@ -34,7 +24,11 @@ async function timedTranslate(fn) {
     return {
       output: result.translated,
       detectedLang: result.detectedLang || null,
-      usedAmount: result.usedAmount ?? null,
+      inputTokens: result.inputTokens ?? 0,
+      outputTokens: result.outputTokens ?? 0,
+      requestCount: result.requestCount ?? 0,
+      retryCount: result.retryCount ?? 0,
+      networkRequests: (result.requestCount ?? 0) + (result.retryCount ?? 0),
       durationMs: Math.round(performance.now() - started),
       error: null,
     };
@@ -42,7 +36,11 @@ async function timedTranslate(fn) {
     return {
       output: null,
       detectedLang: null,
-      usedAmount: null,
+      inputTokens: 0,
+      outputTokens: 0,
+      requestCount: 0,
+      retryCount: 0,
+      networkRequests: 0,
       durationMs: Math.round(performance.now() - started),
       error: error.message,
     };
@@ -51,97 +49,85 @@ async function timedTranslate(fn) {
 
 async function main() {
   const args = parseArgs(process.argv);
-  const outputPath = path.resolve(args.output || "translation-quality-results.json");
-  const keyPath = path.resolve(args.key || "translation-quality-key.json");
-  const prefsPath = path.resolve(args["zotero-prefs"] || "");
-  if (!prefsPath || !fs.existsSync(prefsPath)) {
-    throw new Error("--zotero-prefs must point to an existing Zotero prefs.js");
-  }
+  const outputPath = path.resolve(args.output || "translation-benchmark-results.json");
 
   const cases = JSON.parse(fs.readFileSync(
     path.join(__dirname, "translation-quality-cases.json"),
     "utf8"
   ));
-  let prefs = fs.readFileSync(prefsPath, "utf8");
-  const prefix = "extensions.zotero.ZoteroPDFTranslate.tencent.";
   const tencentSettings = {
-    tencentSecretId: readPreference(prefs, prefix + "secretId"),
-    tencentSecretKey: readPreference(prefs, prefix + "secretKey"),
-    tencentRegion: readPreference(prefs, prefix + "region") || "ap-shanghai",
-    tencentProjectId: readPreference(prefs, prefix + "projectId") || "0",
+    tencentApiKey: process.env.TOKENHUB_API_KEY || "",
+    tencentModel: args.model || "hy-mt2-lite",
   };
-  prefs = "";
-  if (!tencentSettings.tencentSecretId || !tencentSettings.tencentSecretKey) {
-    throw new Error("Tencent credentials were not found in the selected Zotero prefs.js");
+  if (!tencentSettings.tencentApiKey) {
+    throw new Error("TOKENHUB_API_KEY must be set for the live benchmark");
   }
 
-  const blindCases = [];
-  const key = {
-    createdAt: new Date().toISOString(),
-    cases: {},
-  };
+  const results = [];
 
   for (const testCase of cases) {
     const target = testCase.direction.endsWith("-zh") ? "zh" : "en";
-    const microsoft = await timedTranslate(() =>
-      providers.translateWithMicrosoft(testCase.source, target)
-    );
     const tencent = await timedTranslate(() =>
       providers.translateWithTencent(testCase.source, target, tencentSettings)
     );
-    const swap = randomInt(2) === 1;
-    const candidates = swap
-      ? { A: tencent.output, B: microsoft.output }
-      : { A: microsoft.output, B: tencent.output };
 
-    blindCases.push({
+    results.push({
       id: testCase.id,
       direction: testCase.direction,
       category: testCase.category,
       source: testCase.source,
       critical_checks: testCase.critical_checks,
-      candidates,
+      translated: tencent.output,
+      durationMs: tencent.durationMs,
+      detectedLang: tencent.detectedLang,
+      inputTokens: tencent.inputTokens,
+      outputTokens: tencent.outputTokens,
+      providerRequests: tencent.requestCount,
+      retries: tencent.retryCount,
+      networkRequests: tencent.networkRequests,
+      error: tencent.error,
     });
-    key.cases[testCase.id] = {
-      A: swap ? "tencent" : "microsoft",
-      B: swap ? "microsoft" : "tencent",
-      microsoft: {
-        durationMs: microsoft.durationMs,
-        detectedLang: microsoft.detectedLang,
-        error: microsoft.error,
-      },
-      tencent: {
-        durationMs: tencent.durationMs,
-        detectedLang: tencent.detectedLang,
-        usedAmount: tencent.usedAmount,
-        error: tencent.error,
-      },
-    };
   }
 
-  tencentSettings.tencentSecretId = "";
-  tencentSettings.tencentSecretKey = "";
+  tencentSettings.tencentApiKey = "";
+  const successfulResults = results.filter(result => !result.error);
+  const durations = successfulResults
+    .map(result => result.durationMs)
+    .sort((a, b) => a - b);
+  const medianDurationMs = durations.length === 0
+    ? null
+    : durations[Math.floor(durations.length / 2)];
+  const summary = {
+    cases: results.length,
+    succeeded: successfulResults.length,
+    failed: results.length - successfulResults.length,
+    medianDurationMs,
+    totalDurationMs: results.reduce((sum, result) => sum + result.durationMs, 0),
+    providerRequests: results.reduce((sum, result) => sum + result.providerRequests, 0),
+    retries: results.reduce((sum, result) => sum + result.retries, 0),
+    networkRequests: results.reduce((sum, result) => sum + result.networkRequests, 0),
+  };
+
   fs.writeFileSync(outputPath, JSON.stringify({
     createdAt: new Date().toISOString(),
-    rubric: {
-      accuracy: "0-5: meaning, conditions, causality, and omissions",
-      terminology: "0-5: domain and professional wording",
-      fluency: "0-5: natural target-language prose",
-      fidelity: "0-5: numbers, units, names, and formatting",
-    },
-    cases: blindCases,
+    provider: "tencent",
+    summary,
+    cases: results,
+    credentialsWritten: false,
   }, null, 2));
-  fs.writeFileSync(keyPath, JSON.stringify(key, null, 2));
 
   console.log(JSON.stringify({
-    cases: blindCases.length,
+    ...summary,
     outputPath,
-    keyPath,
     credentialsWritten: false,
   }));
 }
 
-main().catch(error => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch(error => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { parseArgs, timedTranslate };

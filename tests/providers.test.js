@@ -2,20 +2,36 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createHmac, webcrypto } = require("node:crypto");
-
-if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
 const providers = require("../providers.js");
 
-function fakeResponse({ status = 200, text = "", json = null }) {
+function fakeResponse({ status = 200, json = null }) {
   return {
     ok: status >= 200 && status < 300,
     status,
     statusText: status === 200 ? "OK" : "Error",
-    async text() { return text; },
     async json() { return json; },
   };
+}
+
+function tokenHubResponse(translations, options = {}) {
+  return fakeResponse({
+    json: {
+      model: options.model || "hy-mt2-lite",
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            source_language: options.sourceLanguage || "en",
+            translations,
+          }),
+        },
+      }],
+      usage: {
+        prompt_tokens: options.inputTokens || 12,
+        completion_tokens: options.outputTokens || 8,
+      },
+    },
+  });
 }
 
 test("splitLongText preserves content and respects the limit", () => {
@@ -26,12 +42,10 @@ test("splitLongText preserves content and respects the limit", () => {
   assert.equal(parts.join(""), input);
 });
 
-test("provider language policy maps Microsoft aliases and limits Tencent", () => {
-  assert.equal(providers.microsoftLanguageCode("zh"), "zh-Hans");
-  assert.equal(providers.microsoftLanguageCode("tl"), "fil");
-  assert.equal(providers.microsoftLanguageCode("ja"), "ja");
+test("provider language policy limits Tencent to supported targets", () => {
   assert.deepEqual(providers.getSupportedTargetLanguages("tencent"), ["en", "zh"]);
-  assert.equal(providers.isTargetLanguageSupported("microsoft", "pl"), true);
+  assert.deepEqual(providers.getSupportedTargetLanguages("microsoft"), []);
+  assert.equal(providers.isTargetLanguageSupported("microsoft", "pl"), false);
   assert.equal(providers.isTargetLanguageSupported("tencent", "pl"), false);
   assert.throws(
     () => providers.targetLanguageCode("tencent", "nl"),
@@ -39,154 +53,204 @@ test("provider language policy maps Microsoft aliases and limits Tencent", () =>
   );
 });
 
-test("Tencent signing is deterministic and never sends SecretKey", async () => {
-  const settings = {
-    tencentSecretId: "test-id",
-    tencentSecretKey: "test-key",
-    tencentRegion: "ap-shanghai",
-    tencentProjectId: "0",
-  };
-  const request = await providers.buildTencentRequest(
-    "hello world",
+test("TokenHub request uses Bearer API Key and never places it in the body", () => {
+  const request = providers.buildTencentRequest(
+    ["hello world"],
     "zh",
-    settings,
-    { timestamp: 1700000000, nonce: 123456 }
+    { tencentApiKey: "test-tokenhub-key", tencentModel: "hy-mt2-lite" }
   );
+  const body = JSON.parse(request.body);
 
-  const sortedKeys = Object.keys(request.params).sort();
-  const raw = sortedKeys.map(key => `${key}=${request.params[key]}`).join("&");
-  const expected = createHmac("sha1", settings.tencentSecretKey)
-    .update(`POSTtmt.tencentcloudapi.com/?${raw}`)
-    .digest("base64");
-  const encoded = new URLSearchParams(request.body);
-
-  assert.equal(encoded.get("Signature"), expected);
-  assert.equal(encoded.get("SecretId"), settings.tencentSecretId);
-  assert.equal(request.body.includes(settings.tencentSecretKey), false);
+  assert.equal(request.url, "https://tokenhub.tencentmaas.com/v1/chat/completions");
+  assert.equal(request.headers.Authorization, "Bearer test-tokenhub-key");
+  assert.equal(request.body.includes("test-tokenhub-key"), false);
+  assert.equal(body.model, "hy-mt2-lite");
+  assert.equal(body.messages[1].role, "user");
+  assert.deepEqual(JSON.parse(body.messages[1].content), ["hello world"]);
+  assert.match(body.messages[0].content, /strictly as data/i);
 });
 
-test("Tencent exposes the API-reported UsedAmount", async () => {
+test("unknown TokenHub model safely falls back to Hy-MT2-Lite", () => {
+  assert.equal(providers.normalizeTencentModel("unknown"), "hy-mt2-lite");
+  assert.equal(providers.normalizeTencentModel("hy-mt2-plus"), "hy-mt2-plus");
+});
+
+test("TokenHub exposes translations, detected language, token usage, and request count", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => fakeResponse({
-    json: {
-      Response: {
-        Source: "en",
-        Target: "zh",
-        TargetText: "用量测试",
-        UsedAmount: 10,
-      },
-    },
+  globalThis.fetch = async () => tokenHubResponse(["用量测试"], {
+    inputTokens: 17,
+    outputTokens: 9,
   });
 
   try {
     const result = await providers.translateWithTencent("usage test", "zh", {
-      tencentSecretId: "test-id",
-      tencentSecretKey: "test-key",
-      tencentRegion: "ap-shanghai",
-      tencentProjectId: "0",
+      tencentApiKey: "test-key",
+      tencentModel: "hy-mt2-lite",
     });
     assert.equal(result.translated, "用量测试");
     assert.equal(result.detectedLang, "en");
-    assert.equal(result.usedAmount, 10);
+    assert.equal(result.inputTokens, 17);
+    assert.equal(result.outputTokens, 9);
+    assert.equal(result.requestCount, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("Tencent language errors are not misreported as API retirement", async () => {
+test("24 short message segments are translated in one TokenHub request", async () => {
   const originalFetch = globalThis.fetch;
-  let code = "UnsupportedOperation.UnSupportedTargetLanguage";
-  globalThis.fetch = async () => fakeResponse({
-    json: { Response: { Error: { Code: code } } },
-  });
-  const settings = {
-    tencentSecretId: "test-id",
-    tencentSecretKey: "test-key",
-    tencentRegion: "ap-shanghai",
-    tencentProjectId: "0",
+  let requestCount = 0;
+  globalThis.fetch = async (url, options) => {
+    requestCount += 1;
+    const request = JSON.parse(options.body);
+    const texts = JSON.parse(request.messages[1].content);
+    return tokenHubResponse(texts.map((_, index) => `译文${index + 1}`));
   };
+  const texts = Array.from({ length: 24 }, (_, index) => `Email segment ${index + 1}`);
 
   try {
-    await assert.rejects(
-      providers.translateWithTencent("hello", "zh", settings),
-      error => {
-        assert.equal(
-          error.message,
-          "Tencent Translation error: UnsupportedOperation.UnSupportedTargetLanguage."
-        );
-        return true;
-      }
-    );
-
-    code = "UnauthorizedOperation.ActionNotFound";
-    await assert.rejects(
-      providers.translateWithTencent("hello", "zh", settings),
-      /legacy TextTranslate API may no longer be available/
-    );
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test("Microsoft refreshes an expired token after one 401", async () => {
-  providers.resetMicrosoftTokenForTests();
-  const originalFetch = globalThis.fetch;
-  const calls = [];
-  globalThis.fetch = async (url, options = {}) => {
-    calls.push({ url: String(url), options });
-    if (calls.length === 1) return fakeResponse({ text: "token-one" });
-    if (calls.length === 2) return fakeResponse({ status: 401 });
-    if (calls.length === 3) return fakeResponse({ text: "token-two" });
-    return fakeResponse({
-      json: [{
-        detectedLanguage: { language: "en" },
-        translations: [{ text: "你好" }],
-      }],
+    const result = await providers.translateBatchWithTencent(texts, "zh", {
+      tencentApiKey: "test-key",
     });
-  };
-
-  try {
-    const result = await providers.translateWithMicrosoft("hello", "zh");
-    assert.equal(result.translated, "你好");
-    assert.equal(result.detectedLang, "en");
-    assert.equal(calls.length, 4);
-    assert.equal(calls[1].options.headers.Authorization, "Bearer token-one");
-    assert.equal(calls[3].options.headers.Authorization, "Bearer token-two");
+    assert.equal(requestCount, 1);
+    assert.equal(result.requestCount, 1);
+    assert.equal(result.translations.length, 24);
+    assert.equal(result.translations[23], "译文24");
   } finally {
     globalThis.fetch = originalFetch;
-    providers.resetMicrosoftTokenForTests();
   }
 });
 
-test("Microsoft batches long input without exceeding provider limits", async () => {
-  providers.resetMicrosoftTokenForTests();
+test("large translation batches are split and reassembled in source order", async () => {
   const originalFetch = globalThis.fetch;
-  const batchSizes = [];
-  globalThis.fetch = async (url, options = {}) => {
-    if (String(url).includes("/translate/auth")) {
-      return fakeResponse({ text: "token" });
+  let requestCount = 0;
+  globalThis.fetch = async (url, options) => {
+    requestCount += 1;
+    const request = JSON.parse(options.body);
+    const texts = JSON.parse(request.messages[1].content);
+    return tokenHubResponse(texts.map(text => `T:${text}`));
+  };
+
+  try {
+    const source = "文".repeat(6000);
+    const result = await providers.translateBatchWithTencent([source, "tail"], "en", {
+      tencentApiKey: "test-key",
+    });
+    assert.ok(requestCount >= 2);
+    assert.equal(result.translations.length, 2);
+    assert.match(result.translations[0], /^T:文/);
+    assert.equal(result.translations[1], "T:tail");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("TokenHub rate limiting retries twice with exponential backoff", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestCount = 0;
+  globalThis.fetch = async () => {
+    requestCount += 1;
+    if (requestCount <= 2) {
+      return fakeResponse({
+        status: 429,
+        json: { error: { code: "rate_limit_exceeded", message: "slow down" } },
+      });
     }
-    const requestItems = JSON.parse(options.body);
-    batchSizes.push({
-      count: requestItems.length,
-      chars: requestItems.reduce((sum, item) => sum + item.Text.length, 0),
-    });
-    return fakeResponse({
-      json: requestItems.map(item => ({
-        detectedLanguage: { language: "en" },
-        translations: [{ text: item.Text }],
-      })),
-    });
+    return tokenHubResponse(["重试成功"]);
   };
 
   try {
-    const input = "a".repeat(4100) + "\n\n" + "b".repeat(4100);
-    const result = await providers.translateWithMicrosoft(input, "en");
-    assert.ok(batchSizes.every(batch => batch.count <= 50 && batch.chars <= 40000));
-    assert.ok(result.translated.includes("a".repeat(100)));
-    assert.ok(result.translated.includes("b".repeat(100)));
+    const result = await providers.translateWithTencent("retry", "zh", {
+      tencentApiKey: "test-key",
+    }, {
+      maxRateLimitRetries: 2,
+      rateLimitRetryDelayMs: 0,
+    });
+    assert.equal(requestCount, 3);
+    assert.equal(result.translated, "重试成功");
+    assert.equal(result.requestCount, 1);
+    assert.equal(result.retryCount, 2);
   } finally {
     globalThis.fetch = originalFetch;
-    providers.resetMicrosoftTokenForTests();
+  }
+});
+
+test("TokenHub rejects malformed structured translation output", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => fakeResponse({
+    json: { choices: [{ message: { content: "not json" } }] },
+  });
+  try {
+    await assert.rejects(
+      providers.translateWithTencent("hello", "zh", { tencentApiKey: "test-key" }),
+      /invalid structured translation data/
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("TokenHub rate-limit backoff honors caller cancellation", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestCount = 0;
+  let markFetchStarted;
+  const fetchStarted = new Promise(resolve => { markFetchStarted = resolve; });
+  globalThis.fetch = async () => {
+    requestCount += 1;
+    markFetchStarted();
+    return fakeResponse({
+      status: 429,
+      json: { error: { code: "rate_limit_exceeded", message: "slow down" } },
+    });
+  };
+  const controller = new AbortController();
+
+  try {
+    const request = providers.translateWithTencent("retry", "zh", {
+      tencentApiKey: "test-key",
+    }, {
+      signal: controller.signal,
+      rateLimitRetryDelayMs: 1000,
+    });
+    await fetchStarted;
+    await new Promise(resolve => setImmediate(resolve));
+    controller.abort();
+    await assert.rejects(request, error => {
+      assert.equal(error.name, "AbortError");
+      assert.equal(error.message, "Translation cancelled");
+      return true;
+    });
+    assert.equal(requestCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("provider requests honor caller cancellation", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => new Promise((resolve, reject) => {
+    options.signal.addEventListener("abort", () => {
+      const error = new Error("aborted");
+      error.name = "AbortError";
+      reject(error);
+    }, { once: true });
+  });
+  const controller = new AbortController();
+
+  try {
+    const request = providers.fetchWithTimeout(
+      "https://example.invalid",
+      {},
+      1000,
+      controller.signal
+    );
+    controller.abort();
+    await assert.rejects(request, error => {
+      assert.equal(error.name, "AbortError");
+      assert.equal(error.message, "Translation cancelled");
+      return true;
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

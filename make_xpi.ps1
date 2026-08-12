@@ -15,6 +15,7 @@ $zip = [System.IO.Compression.ZipFile]::Open($xpiPath, 'Create')
 # Files to include
 $includes = @(
     'manifest.json',
+    'shared\runtime-policy.js',
     'providers.js',
     'translation-router.js',
     'background.js',

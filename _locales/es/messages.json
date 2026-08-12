@@ -1,5 +1,7 @@
 {
   "appName": { "message": "Thunderbird Translator" },
+  "appDescription": { "message": "Traducir correos con un proveedor seleccionado explícitamente" },
+  "translate": { "message": "Traducir" },
   "save": { "message": "Guardar" },
   "settingsSaved": { "message": "Configuración guardada" }
 }

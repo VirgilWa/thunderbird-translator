@@ -6,7 +6,9 @@
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       font-size: 14px;
-      color: #333;
+      color: CanvasText;
+      background: Canvas;
+      color-scheme: light dark;
       max-width: 480px;
       margin: 20px auto;
       padding: 0 16px;
@@ -15,7 +17,7 @@
     h2 {
       font-size: 18px;
       margin-bottom: 20px;
-      color: #1a1a1a;
+      color: CanvasText;
     }
 
     /* Service section */
@@ -29,7 +31,7 @@
       gap: 8px;
       font-size: 14px;
       font-weight: 600;
-      color: #444;
+      color: CanvasText;
       padding: 8px 0 6px;
       border-bottom: 1px solid #e0e0e0;
       cursor: pointer;
@@ -77,6 +79,8 @@
       border-radius: 4px;
       font-size: 14px;
       box-sizing: border-box;
+      color: FieldText;
+      background: Field;
     }
 
     textarea {
@@ -92,7 +96,7 @@
     .field-hint {
       margin-top: 4px;
       font-size: 12px;
-      color: #666;
+      color: GrayText;
     }
 
     .input-row {
@@ -139,12 +143,13 @@
       padding: 8px 16px;
       border: 1px solid #ccc;
       border-radius: 4px;
-      background: #f5f5f5;
+      color: ButtonText;
+      background: ButtonFace;
       cursor: pointer;
       font-size: 13px;
     }
 
-    button:hover { background: #e8e8e8; }
+    button:hover { filter: brightness(0.95); }
 
     button.primary {
       background: #0060df;
@@ -152,7 +157,7 @@
       border-color: #0060df;
     }
 
-    button.primary:hover { background: #004ebc; }
+    button.primary:hover { background: #004ebc; filter: none; }
 
     .button-row {
       display: flex;
@@ -219,49 +224,33 @@
 <body>
   <h2 data-i18n="appName"></h2>
 
-  <!-- Microsoft Translator -->
-  <div class="service-section">
-    <label class="service-header">
-      <input type="radio" name="service" value="microsoft" id="radio-microsoft">
-      Microsoft Translator
-    </label>
-    <div class="service-config">
-      <p class="privacy-note">⚠ No API key is required. Message content is sent to Microsoft's translation service.</p>
-    </div>
-  </div>
-
-  <!-- Tencent Cloud Translation -->
+  <!-- Tencent TokenHub translation -->
   <div class="service-section">
     <label class="service-header">
       <input type="radio" name="service" value="tencent" id="radio-tencent">
-      Tencent Cloud Translation
+      Tencent TokenHub (Hy-MT2)
     </label>
     <div class="service-config">
-      <p class="privacy-note">⚠ Metered service. It is never used as an automatic fallback. Credentials are stored in the Thunderbird profile and are not encrypted by this add-on.</p>
+      <p class="privacy-note" data-i18n="tencentPrivacyNote"></p>
       <div class="field">
-        <label for="tencentSecretId">SecretId</label>
-        <input type="password" id="tencentSecretId" autocomplete="new-password">
+        <label for="tencentApiKey">TokenHub API Key</label>
+        <input type="password" id="tencentApiKey" autocomplete="new-password">
       </div>
       <div class="field">
-        <label for="tencentSecretKey">SecretKey</label>
-        <input type="password" id="tencentSecretKey" autocomplete="new-password">
+        <label for="tencentModel">Model</label>
+        <select id="tencentModel">
+          <option value="hy-mt2-lite">Hy-MT2-Lite — fastest</option>
+          <option value="hy-mt2-plus">Hy-MT2-Plus — balanced</option>
+          <option value="hy-mt2-pro">Hy-MT2-Pro — professional</option>
+        </select>
       </div>
-      <div class="field">
-        <label for="tencentRegion">Region</label>
-        <input type="text" id="tencentRegion" placeholder="ap-shanghai">
-      </div>
-      <div class="field">
-        <label for="tencentProjectId">ProjectId</label>
-        <input type="text" id="tencentProjectId" placeholder="0">
-      </div>
-      <input type="file" id="zoteroPrefsFile" accept=".js" hidden>
       <div class="input-row">
-        <button id="importZoteroTencent">Import from Zotero prefs.js</button>
-        <button id="testTencentConnection">Test Connection</button>
+        <button id="testTencentConnection" data-i18n="testConnection"></button>
       </div>
       <div id="tencentTestStatus" class="status"></div>
-      <p class="field-hint">Import reads a user-selected Zotero <code>prefs.js</code> once. The file is not retained or uploaded.</p>
+      <p class="field-hint" data-i18n="tokenHubKeyHint"></p>
       <p id="tencentUsage" class="field-hint"></p>
+      <p id="lastTranslationPerformance" class="field-hint"></p>
     </div>
   </div>
 

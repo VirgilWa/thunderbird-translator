@@ -1,0 +1,87 @@
+{
+  "appName": { "message": "Thunderbird 翻译器" },
+  "appDescription": { "message": "使用明确选择的服务翻译邮件" },
+  "translate": { "message": "翻译" },
+  "save": { "message": "保存" },
+  "settingsSaved": { "message": "设置已保存" },
+  "setUpTranslation": { "message": "设置翻译服务" },
+  "translateLanguage": {
+    "message": "翻译（$LANG$）",
+    "placeholders": { "lang": { "content": "$1" } }
+  },
+  "translationStarting": { "message": "正在翻译——再次点击可取消" },
+  "translationInProgress": { "message": "正在翻译…" },
+  "translationProgress": {
+    "message": "正在翻译 $CURRENT$/$TOTAL$——再次点击可取消",
+    "placeholders": {
+      "current": { "content": "$1" },
+      "total": { "content": "$2" }
+    }
+  },
+  "translationCancelled": { "message": "已取消翻译" },
+  "translationAlreadyInProgress": { "message": "已有翻译正在进行" },
+  "translationFailedDetail": {
+    "message": "翻译失败：$DETAIL$",
+    "placeholders": { "detail": { "content": "$1" } }
+  },
+  "chooseProviderError": { "message": "请在附加组件设置中选择可用的翻译服务。" },
+  "translatedVia": {
+    "message": "翻译服务：$SERVICE$",
+    "placeholders": { "service": { "content": "$1" } }
+  },
+  "translatedViaWithUrl": {
+    "message": "翻译服务：$SERVICE$（$URL$）",
+    "placeholders": {
+      "service": { "content": "$1" },
+      "url": { "content": "$2" }
+    }
+  },
+  "noTextSelected": { "message": "尚未选择文字——请先在邮件正文中选中文字" },
+  "noTextToTranslate": { "message": "没有可翻译的文字" },
+  "autoTranslate": { "message": "自动翻译" },
+  "translateTo": { "message": "翻译为" },
+  "neverAutoTranslate": { "message": "不自动翻译" },
+  "detectingLanguage": { "message": "正在检测语言…" },
+  "alwaysAutoTranslateLanguage": {
+    "message": "始终自动翻译$LANGUAGE$",
+    "placeholders": { "language": { "content": "$1" } }
+  },
+  "neverAutoTranslateLanguage": {
+    "message": "不自动翻译$LANGUAGE$",
+    "placeholders": { "language": { "content": "$1" } }
+  },
+  "tencentPrivacyNote": { "message": "⚠ 邮件文本会发送至腾讯 TokenHub，并按 Token 计费；本扩展不会自动回退到其它服务。API Key 保存在 Thunderbird 配置文件中且未由本扩展加密。" },
+  "tokenHubKeyHint": { "message": "请使用 TokenHub 专用 API Key；旧机器翻译 SecretId/SecretKey 不能直接使用。默认选择低延迟的 Hy-MT2-Lite。" },
+  "importFromZotero": { "message": "从 Zotero prefs.js 导入" },
+  "testConnection": { "message": "测试连接" },
+  "zoteroImportHint": { "message": "导入只读取一次您选择的 Zotero prefs.js；文件不会被保留或上传。" },
+  "localUsageUnavailable": { "message": "无法读取 Thunderbird 本地用量。" },
+  "tencentUsageSummary": {
+    "message": "Thunderbird 在 $MONTH$ 记录：输入 $INPUT$ Token，输出 $OUTPUT$ Token；费用和完整用量以腾讯云控制台为准。",
+    "placeholders": {
+      "month": { "content": "$1" },
+      "input": { "content": "$2" },
+      "output": { "content": "$3" }
+    }
+  },
+  "zoteroCredentialsNotFound": { "message": "所选 Zotero prefs.js 中未找到腾讯云 SecretId 或 SecretKey。" },
+  "tencentSettingsImported": { "message": "腾讯云设置已导入；请点击“保存”写入 Thunderbird。" },
+  "tencentCredentialsRequired": { "message": "必须填写 TokenHub API Key。" },
+  "connectedSuccessfully": { "message": "连接成功。" },
+  "connectionFailed": {
+    "message": "连接失败：$DETAIL$",
+    "placeholders": { "detail": { "content": "$1" } }
+  },
+  "noTranslationPerformance": { "message": "尚无本地翻译性能记录。" },
+  "lastTranslationPerformance": {
+    "message": "上次翻译：$DURATION$ 秒，$REQUESTS$ 次网络请求，重试 $RETRIES$ 次，去重 $DEDUPLICATED$ 段；$COMPLETED$。",
+    "placeholders": {
+      "duration": { "content": "$1" },
+      "requests": { "content": "$2" },
+      "retries": { "content": "$3" },
+      "deduplicated": { "content": "$4" },
+      "completed": { "content": "$5" }
+    }
+  },
+  "settingsSaveFailed": { "message": "无法保存设置。" }
+}

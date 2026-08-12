@@ -1,6 +1,12 @@
 "use strict";
 
 (() => {
+  const skipAutoTranslateOnLoad = window.__thunderbirdTranslatorSkipAutoTranslateOnce === true;
+  try {
+    delete window.__thunderbirdTranslatorSkipAutoTranslateOnce;
+  } catch {
+    window.__thunderbirdTranslatorSkipAutoTranslateOnce = false;
+  }
   if (window.__thunderbirdTranslatorLoaded) return;
   window.__thunderbirdTranslatorLoaded = true;
 
@@ -18,6 +24,7 @@
   ]);
 
   const MIN_TEXT_LENGTH = 3;
+  const MAX_TRANSLATION_CONCURRENCY = 2;
 
   const nodeMap = new Map();
   let isTranslated = false;
@@ -26,10 +33,21 @@
   let cachedLang = null;
   let translatedSubject = null;
   let subjectBar = null;
+  let errorBar = null;
+  let cancellationRequested = false;
+  let cancellationFailure = null;
+
+  function i18n(key, substitutions = [], fallback = "") {
+    const translated = browser.i18n.getMessage(key, substitutions);
+    return translated || fallback || key;
+  }
 
   // --- Port to background ---
 
   const port = browser.runtime.connect({ name: "translator" });
+  port.onDisconnect?.addListener?.(() => {
+    window.__thunderbirdTranslatorLoaded = false;
+  });
   const pendingRequests        = new Map(); // text translate requests
   const subjectPendingRequests = new Map(); // subject translate requests
   const exemptionPendingRequests = new Map(); // exemption check requests
@@ -48,7 +66,13 @@
     if (message.id != null && subjectPendingRequests.has(message.id)) {
       const { resolve, reject } = subjectPendingRequests.get(message.id);
       subjectPendingRequests.delete(message.id);
-      if (message.success) resolve({ translated: message.translated, serviceLabel: message.serviceLabel, serviceUrl: message.serviceUrl });
+      if (message.success) resolve({
+        translated: message.translated,
+        serviceLabel: message.serviceLabel,
+        serviceUrl: message.serviceUrl,
+        requestCount: Number(message.requestCount) || 0,
+        retryCount: Number(message.retryCount) || 0,
+      });
       else reject(new Error(message.error));
       return;
     }
@@ -56,7 +80,12 @@
     if (message.id != null && pendingRequests.has(message.id)) {
       const { resolve, reject } = pendingRequests.get(message.id);
       pendingRequests.delete(message.id);
-      if (message.success) resolve(message.translated);
+      if (message.success) resolve({
+        translated: message.translated,
+        translations: message.translations,
+        requestCount: Number(message.requestCount) || 0,
+        retryCount: Number(message.retryCount) || 0,
+      });
       else reject(new Error(message.error));
       return;
     }
@@ -67,22 +96,71 @@
       port.postMessage({ command: "translateDone", reqId: message.reqId, isTranslated, ...result });
       return;
     }
+    if (message.command === "doCancel") {
+      cancelCurrentTranslation(message.reason || null);
+      port.postMessage({
+        command: "cancelDone",
+        reqId: message.reqId,
+        isTranslated,
+        success: true,
+        cancelled: true,
+      });
+      return;
+    }
     if (message.command === "doRevert") {
       reloadPage();
       port.postMessage({ command: "revertDone", reqId: message.reqId, isTranslated: false, success: true });
       return;
     }
     if (message.command === "getState") {
-      port.postMessage({ command: "stateDone", reqId: message.reqId, isTranslated, success: true });
+      port.postMessage({
+        command: "stateDone",
+        reqId: message.reqId,
+        isTranslated,
+        isTranslating,
+        success: true,
+      });
       return;
     }
   });
+
+  function cancelRequestMap(requests) {
+    for (const [id, pending] of requests.entries()) {
+      port.postMessage({ command: "cancelTranslate", id });
+      pending.reject(new Error("Translation cancelled"));
+    }
+    requests.clear();
+  }
+
+  function cancelCurrentTranslation(reason = null) {
+    if (!isTranslating) return;
+    cancellationRequested = true;
+    cancellationFailure = reason;
+    cancelOutstandingTranslationRequests();
+  }
+
+  function cancelOutstandingTranslationRequests() {
+    cancelRequestMap(pendingRequests);
+    cancelRequestMap(subjectPendingRequests);
+  }
+
+  function throwIfCancelled() {
+    if (cancellationRequested) throw new Error("Translation cancelled");
+  }
 
   function sendTranslateRequest(text) {
     return new Promise((resolve, reject) => {
       const id = nextRequestId++;
       pendingRequests.set(id, { resolve, reject });
       port.postMessage({ command: "translate", id, text });
+    });
+  }
+
+  function sendTranslateBatchRequest(texts) {
+    return new Promise((resolve, reject) => {
+      const id = nextRequestId++;
+      pendingRequests.set(id, { resolve, reject });
+      port.postMessage({ command: "translateBatch", id, texts });
     });
   }
 
@@ -133,6 +211,19 @@
         font-size: 16px;
         font-weight: 600;
       }
+      #__translator_error_bar__ {
+        position: sticky;
+        top: 0;
+        z-index: 10000;
+        box-sizing: border-box;
+        width: 100%;
+        padding: 8px 12px;
+        color: #721c24;
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        font: 13px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        white-space: pre-wrap;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -146,8 +237,12 @@
     const infoLine = document.createElement("div");
     infoLine.id = "__translator_service_info__";
     infoLine.textContent = serviceUrl
-      ? `🌐 Translated via ${serviceLabel} (${serviceUrl})`
-      : `🌐 Translated via ${serviceLabel}`;
+      ? "🌐 " + i18n(
+        "translatedViaWithUrl",
+        [serviceLabel, serviceUrl],
+        `Translated via ${serviceLabel} (${serviceUrl})`
+      )
+      : "🌐 " + i18n("translatedVia", [serviceLabel], `Translated via ${serviceLabel}`);
 
     const subjectLine = document.createElement("div");
     subjectLine.id = "__translator_subject_text__";
@@ -170,6 +265,28 @@
     document.body.style.removeProperty("padding-top");
     document.body.style.removeProperty("margin-top");
     subjectBar = null;
+  }
+
+  function showErrorBar(error) {
+    removeErrorBar();
+    createSubjectBarStyle();
+    const detail = TranslatorRuntimePolicy.normalizeError(error);
+    const bar = document.createElement("div");
+    bar.id = "__translator_error_bar__";
+    bar.setAttribute("role", "alert");
+    bar.textContent = "⚠ " + i18n(
+      "translationFailedDetail",
+      [detail],
+      `Translation failed: ${detail}`
+    );
+    document.body.insertBefore(bar, document.body.firstChild);
+    errorBar = bar;
+  }
+
+  function removeErrorBar() {
+    const existing = document.getElementById("__translator_error_bar__");
+    if (existing) existing.remove();
+    errorBar = null;
   }
 
   // --- DOM Text Extraction ---
@@ -230,15 +347,16 @@
 
   // --- Translation Logic ---
 
-  function applyTranslation(block, translatedText) {
+  function stageBlockTranslation(block, translatedText) {
+    const operations = [];
     if (block.nodes.length === 1) {
       const node = block.nodes[0];
       const existing = nodeMap.get(node);
-      nodeMap.set(node, {
+      operations.push({
+        node,
         original: existing?.original ?? node.textContent,
         translated: translatedText,
       });
-      node.textContent = translatedText;
     } else {
       const translatedLines = translatedText.split("\n").filter(l => l.trim().length > 0);
       for (let i = 0; i < block.nodes.length; i++) {
@@ -255,101 +373,303 @@
         if (i === block.nodes.length - 1 && translatedLines.length > block.nodes.length) {
           nodeTranslation += "\n" + translatedLines.slice(block.nodes.length).join("\n");
         }
-        nodeMap.set(node, {
+        operations.push({
+          node,
           original: existing?.original ?? node.textContent,
           translated: nodeTranslation,
         });
-        node.textContent = nodeTranslation;
       }
     }
+    return operations;
   }
 
   function isURL(text) {
     return /^https?:\/\/[^\s]+$/.test(text.trim());
   }
 
-  async function translateNodeByNode(block) {
-    for (let i = 0; i < block.nodes.length; i++) {
-      const node = block.nodes[i];
-      const existing = nodeMap.get(node);
-      const originalText = existing?.original ?? node.textContent.trim();
-      if (node.parentElement?.tagName === "A" || isURL(originalText)) continue;
-      if (originalText.length < MIN_TEXT_LENGTH) continue;
-      const translatedText = await sendTranslateRequest(originalText);
-      nodeMap.set(node, { original: originalText, translated: translatedText });
-      node.textContent = translatedText;
+  function buildPreTranslationTasks(blocks) {
+    const tasks = [];
+    const tasksByText = new Map();
+    let sourceSegmentCount = 0;
+
+    for (const block of blocks) {
+      for (const node of block.nodes) {
+        const existing = nodeMap.get(node);
+        const original = existing?.original ?? node.textContent;
+        const originalText = original.trim();
+        if (node.parentElement?.tagName === "A" || isURL(originalText)) continue;
+        if (originalText.length < MIN_TEXT_LENGTH) continue;
+        sourceSegmentCount += 1;
+
+        let task = tasksByText.get(originalText);
+        if (!task) {
+          task = { originalText, occurrences: [] };
+          tasksByText.set(originalText, task);
+          tasks.push(task);
+        }
+        task.occurrences.push({ node, original });
+      }
     }
+
+    return {
+      tasks,
+      sourceSegmentCount,
+      deduplicatedSegmentCount: sourceSegmentCount - tasks.length,
+    };
   }
 
-  async function translateByBlocks(blocks) {
-    const allText = blocks.map(b => b.text).join("\n\n");
-    const fullTranslation = await sendTranslateRequest(allText);
-    const translatedParts = fullTranslation.split("\n\n");
-    for (let i = 0; i < blocks.length; i++) {
-      applyTranslation(blocks[i], translatedParts[i]?.trim() || blocks[i].text);
+  function reportProgress(progress) {
+    port.postMessage({
+      command: "translationProgress",
+      current: progress.current,
+      total: progress.total,
+    });
+  }
+
+  function addResultMetrics(metrics, result) {
+    metrics.providerRequests += Number(result?.requestCount) || 0;
+    metrics.retryCount += Number(result?.retryCount) || 0;
+  }
+
+  async function runTranslationTasks(tasks, progress, metrics) {
+    if (tasks.length === 0) return [];
+
+    const results = new Array(tasks.length);
+    let nextIndex = 0;
+    let firstError = null;
+
+    async function worker() {
+      while (!firstError) {
+        try {
+          throwIfCancelled();
+        } catch (error) {
+          if (!firstError) firstError = error;
+          return;
+        }
+
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= tasks.length) return;
+
+        const task = tasks[index];
+        try {
+          const result = await task.run();
+          results[index] = result;
+          addResultMetrics(metrics, result);
+          progress.current += 1;
+          reportProgress(progress);
+        } catch (error) {
+          if (!firstError) {
+            firstError = error;
+            cancelOutstandingTranslationRequests();
+          }
+          return;
+        }
+      }
+    }
+
+    const workerCount = Math.min(MAX_TRANSLATION_CONCURRENCY, tasks.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    if (firstError) throw firstError;
+    return results;
+  }
+
+  async function translateBodyBatch(preTasks, blocks) {
+    throwIfCancelled();
+    const entries = [
+      ...preTasks.map(task => ({ kind: "pre", text: task.originalText, task })),
+      ...blocks.map(block => ({ kind: "block", text: block.text, block })),
+    ];
+    if (entries.length === 0) {
+      return { kind: "body", operations: [], requestCount: 0, retryCount: 0 };
+    }
+
+    const response = await sendTranslateBatchRequest(entries.map(entry => entry.text));
+    if (
+      !Array.isArray(response.translations) ||
+      response.translations.length !== entries.length
+    ) {
+      throw new Error("Translation response did not preserve message structure");
+    }
+
+    const operations = [];
+    entries.forEach((entry, index) => {
+      const translated = response.translations[index];
+      if (entry.kind === "pre") {
+        operations.push(...entry.task.occurrences.map(({ node, original }) => ({
+          node,
+          original,
+          translated,
+        })));
+      } else {
+        operations.push(...stageBlockTranslation(entry.block, translated));
+      }
+    });
+    return {
+      kind: "body",
+      operations,
+      requestCount: response.requestCount,
+      retryCount: response.retryCount,
+    };
+  }
+
+  async function translateSubjectTask() {
+    throwIfCancelled();
+    const subjectData = await sendSubjectTranslateRequest();
+    return {
+      kind: "subject",
+      subjectData,
+      requestCount: subjectData.requestCount,
+      retryCount: subjectData.retryCount,
+    };
+  }
+
+  function scheduleSubjectWithBodyTasks(bodyTasks, subjectTask) {
+    if (bodyTasks.length <= 1) return [...bodyTasks, subjectTask];
+    return [bodyTasks[0], bodyTasks[1], subjectTask, ...bodyTasks.slice(2)];
+  }
+
+  function commitTranslation(operations, subjectData) {
+    const snapshots = operations.map(operation => ({
+      node: operation.node,
+      text: operation.node.textContent,
+      hadMapEntry: nodeMap.has(operation.node),
+      mapEntry: nodeMap.get(operation.node),
+    }));
+
+    try {
+      for (const operation of operations) {
+        if (!document.body.contains(operation.node)) {
+          throw new Error("Message content changed while translation was running");
+        }
+        operation.node.textContent = operation.translated;
+        nodeMap.set(operation.node, {
+          original: operation.original,
+          translated: operation.translated,
+        });
+      }
+      if (subjectData?.translated) injectSubjectBar(subjectData);
+    } catch (error) {
+      removeSubjectBar();
+      for (const snapshot of snapshots) {
+        try {
+          if (document.body.contains(snapshot.node)) snapshot.node.textContent = snapshot.text;
+          if (snapshot.hadMapEntry) nodeMap.set(snapshot.node, snapshot.mapEntry);
+          else nodeMap.delete(snapshot.node);
+        } catch (rollbackError) {
+          console.error("[Translator] Rollback failed:", rollbackError);
+        }
+      }
+      throw error;
     }
   }
 
   async function startTranslation(targetLang) {
     if (isTranslating) return { success: false, error: "Translation already in progress" };
+    const startedAt = Date.now();
+    const metrics = {
+      version: 1,
+      cacheHit: false,
+      sourceSegments: 0,
+      scheduledTasks: 0,
+      deduplicatedSegments: 0,
+      providerRequests: 0,
+      retryCount: 0,
+    };
+    const finalizedMetrics = () => ({
+      ...metrics,
+      networkRequests: metrics.providerRequests + metrics.retryCount,
+      durationMs: Math.max(0, Date.now() - startedAt),
+    });
+
     isTranslating = true;
+    cancellationRequested = false;
+    cancellationFailure = null;
+    removeErrorBar();
     try {
       // Invalidate cache if language changed
       if (targetLang && targetLang !== cachedLang) {
         translationCached = false;
-        translatedSubject = null;
-        for (const [node, data] of nodeMap.entries()) {
-          nodeMap.set(node, { original: data.original, translated: null });
-        }
       }
 
       // Use cache if available
       if (translationCached && nodeMap.size > 0) {
+        const cachedOperations = [];
         for (const [node, data] of nodeMap.entries()) {
           if (document.body.contains(node) && data.translated) {
-            node.textContent = data.translated;
+            cachedOperations.push({
+              node,
+              original: data.original,
+              translated: data.translated,
+            });
           }
         }
-        if (translatedSubject) injectSubjectBar(translatedSubject);
+        commitTranslation(cachedOperations, translatedSubject);
         isTranslated = true;
-        return { success: true };
+        metrics.cacheHit = true;
+        return { success: true, metrics: finalizedMetrics() };
       }
 
       const blocks = extractTextBlocks();
-      if (blocks.length === 0) return { success: false, error: "No text to translate" };
+      if (blocks.length === 0) {
+        throw new Error(i18n("noTextToTranslate", [], "No text to translate"));
+      }
 
       const preBlocks    = blocks.filter(b => b.nodes[0]?.parentElement?.tagName === "PRE");
       const nonPreBlocks = blocks.filter(b => !preBlocks.includes(b));
+      const preTaskInfo = buildPreTranslationTasks(preBlocks);
+      const bodyTasks = [{
+        run: () => translateBodyBatch(preTaskInfo.tasks, nonPreBlocks),
+      }];
+      const scheduledTasks = scheduleSubjectWithBodyTasks(
+        bodyTasks,
+        { run: translateSubjectTask }
+      );
 
-      // Translate body and subject in parallel
-      const bodyPromise = (async () => {
-        for (const block of preBlocks) await translateNodeByNode(block);
-        if (nonPreBlocks.length > 0) await translateByBlocks(nonPreBlocks);
-      })();
-      const subjectPromise = sendSubjectTranslateRequest();
+      metrics.sourceSegments = preTaskInfo.sourceSegmentCount + nonPreBlocks.length + 1;
+      metrics.scheduledTasks = scheduledTasks.length;
+      metrics.deduplicatedSegments = preTaskInfo.deduplicatedSegmentCount;
 
-      await bodyPromise;
-      translatedSubject = await subjectPromise;
+      const progress = { current: 0, total: scheduledTasks.length };
+      reportProgress(progress);
+
+      const results = await runTranslationTasks(scheduledTasks, progress, metrics);
+      throwIfCancelled();
+
+      const operations = results
+        .filter(result => result?.kind === "body")
+        .flatMap(result => result.operations);
+      const newTranslatedSubject = results.find(
+        result => result?.kind === "subject"
+      )?.subjectData || null;
+
+      commitTranslation(operations, newTranslatedSubject);
+      translatedSubject = newTranslatedSubject;
 
       isTranslated = true;
       translationCached = true;
       if (targetLang) cachedLang = targetLang;
 
-      if (translatedSubject?.translated) injectSubjectBar(translatedSubject);
-
-      return { success: true };
+      return { success: true, metrics: finalizedMetrics() };
     } catch (e) {
-      const msg = (e.message.includes("Failed to fetch") || e.message.includes("NetworkError"))
-        ? "Server unreachable"
-        : e.message;
-      return { success: false, error: msg };
+      const cancelled = !cancellationFailure &&
+        (cancellationRequested || TranslatorRuntimePolicy.isCancellationError(e));
+      const error = cancellationFailure || (cancelled
+        ? i18n("translationCancelled", [], "Translation cancelled")
+        : TranslatorRuntimePolicy.normalizeError(e));
+      if (!cancelled) showErrorBar(error);
+      else removeErrorBar();
+      return { success: false, cancelled, error, metrics: finalizedMetrics() };
     } finally {
       isTranslating = false;
+      cancellationRequested = false;
+      cancellationFailure = null;
     }
   }
 
   function reloadPage() {
     removeSubjectBar();
+    removeErrorBar();
     for (const [node, data] of nodeMap.entries()) {
       try {
         if (document.body.contains(node)) node.textContent = data.original;
@@ -361,7 +681,7 @@
   }
 
   // Auto-translate on load if setting is enabled
-  browser.storage.local.get({ autoTranslate: false }).then(async (s) => {
+  if (!skipAutoTranslateOnLoad) browser.storage.local.get({ autoTranslate: false }).then(async (s) => {
     if (!s.autoTranslate) return;
 
     port.postMessage({ command: "setBadge" });
@@ -374,7 +694,11 @@
         const { shouldRevert } = await sendCheckExemptionRequest();
         if (shouldRevert) {
           reloadPage();
-          port.postMessage({ command: "clearBadge", success: true });
+          port.postMessage({
+            command: "clearBadge",
+            success: true,
+            metrics: result.metrics,
+          });
           return;
         }
       } catch (e) {
@@ -382,7 +706,13 @@
       }
     }
 
-    port.postMessage({ command: "clearBadge", success: result.success, error: result.error });
+    port.postMessage({
+      command: "clearBadge",
+      success: result.success,
+      cancelled: result.cancelled,
+      error: result.error,
+      metrics: result.metrics,
+    });
   });
 
   console.log("[Translator] Ready");

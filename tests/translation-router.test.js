@@ -5,29 +5,31 @@ const assert = require("node:assert/strict");
 
 const { translateWithFallback } = require("../translation-router.js");
 
-test("Microsoft is routed directly without fallback", async () => {
+test("Tencent is routed directly with request options", async () => {
   const calls = [];
+  const requestOptions = { marker: "request-options" };
   const result = await translateWithFallback({
-    service: "microsoft",
+    service: "tencent",
     text: "hello",
     targetLang: "zh",
     settings: {},
     sourceLang: null,
-    async translateUsingService(service) {
-      calls.push(service);
+    requestOptions,
+    async translateUsingService(service, text, targetLang, settings, sourceLang, forwardedOptions) {
+      calls.push({ service, forwardedOptions });
       return { translated: "你好", detectedLang: "en", provider: service };
     },
   });
 
-  assert.deepEqual(calls, ["microsoft"]);
+  assert.deepEqual(calls, [{ service: "tencent", forwardedOptions: requestOptions }]);
   assert.equal(result.translated, "你好");
-  assert.equal(result.provider, "microsoft");
+  assert.equal(result.provider, "tencent");
 });
 
-test("retired providers are rejected", async () => {
+test("retired Microsoft provider is rejected", async () => {
   await assert.rejects(
     translateWithFallback({
-      service: "unsupported",
+      service: "microsoft",
       text: "hello",
       targetLang: "zh",
       settings: {},
@@ -36,7 +38,7 @@ test("retired providers are rejected", async () => {
         throw new Error("should not be called");
       },
     }),
-    /Unsupported translation service: unsupported/
+    /Unsupported translation service: microsoft/
   );
 });
 

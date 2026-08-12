@@ -1,5 +1,87 @@
 {
   "appName": { "message": "Thunderbird Translator" },
+  "appDescription": { "message": "Translate email with an explicitly selected provider" },
+  "translate": { "message": "Translate" },
   "save": { "message": "Save" },
-  "settingsSaved": { "message": "Settings saved" }
+  "settingsSaved": { "message": "Settings saved" },
+  "setUpTranslation": { "message": "Set up translation" },
+  "translateLanguage": {
+    "message": "Translate ($LANG$)",
+    "placeholders": { "lang": { "content": "$1" } }
+  },
+  "translationStarting": { "message": "Translating — click again to cancel" },
+  "translationInProgress": { "message": "Translating…" },
+  "translationProgress": {
+    "message": "Translating $CURRENT$/$TOTAL$ — click again to cancel",
+    "placeholders": {
+      "current": { "content": "$1" },
+      "total": { "content": "$2" }
+    }
+  },
+  "translationCancelled": { "message": "Translation cancelled" },
+  "translationAlreadyInProgress": { "message": "Translation already in progress" },
+  "translationFailedDetail": {
+    "message": "Translation failed: $DETAIL$",
+    "placeholders": { "detail": { "content": "$1" } }
+  },
+  "chooseProviderError": { "message": "Choose an available translation provider in add-on settings." },
+  "translatedVia": {
+    "message": "Translated via $SERVICE$",
+    "placeholders": { "service": { "content": "$1" } }
+  },
+  "translatedViaWithUrl": {
+    "message": "Translated via $SERVICE$ ($URL$)",
+    "placeholders": {
+      "service": { "content": "$1" },
+      "url": { "content": "$2" }
+    }
+  },
+  "noTextSelected": { "message": "No text selected — highlight text in the email body first" },
+  "noTextToTranslate": { "message": "No text to translate" },
+  "autoTranslate": { "message": "Auto-translate" },
+  "translateTo": { "message": "Translate to" },
+  "neverAutoTranslate": { "message": "Never auto-translate" },
+  "detectingLanguage": { "message": "Detecting language…" },
+  "alwaysAutoTranslateLanguage": {
+    "message": "Always auto-translate $LANGUAGE$",
+    "placeholders": { "language": { "content": "$1" } }
+  },
+  "neverAutoTranslateLanguage": {
+    "message": "Never auto-translate $LANGUAGE$",
+    "placeholders": { "language": { "content": "$1" } }
+  },
+  "tencentPrivacyNote": { "message": "⚠ Email text is sent to Tencent TokenHub and billed by token. This add-on never falls back to another service automatically. The API Key is stored in the Thunderbird profile and is not encrypted by this add-on." },
+  "tokenHubKeyHint": { "message": "Use a TokenHub-specific API Key. Legacy Machine Translation SecretId/SecretKey credentials cannot be reused directly. Hy-MT2-Lite is selected by default for low latency." },
+  "importFromZotero": { "message": "Import from Zotero prefs.js" },
+  "testConnection": { "message": "Test connection" },
+  "zoteroImportHint": { "message": "Import reads a user-selected Zotero prefs.js once. The file is not retained or uploaded." },
+  "localUsageUnavailable": { "message": "Local Thunderbird usage is unavailable." },
+  "tencentUsageSummary": {
+    "message": "Thunderbird observed in $MONTH$: $INPUT$ input tokens and $OUTPUT$ output tokens. Tencent Console is authoritative for billing and complete usage.",
+    "placeholders": {
+      "month": { "content": "$1" },
+      "input": { "content": "$2" },
+      "output": { "content": "$3" }
+    }
+  },
+  "zoteroCredentialsNotFound": { "message": "Tencent SecretId or SecretKey was not found in the selected Zotero prefs.js." },
+  "tencentSettingsImported": { "message": "Tencent settings imported. Click Save to store them in Thunderbird." },
+  "tencentCredentialsRequired": { "message": "TokenHub API Key is required." },
+  "connectedSuccessfully": { "message": "Connected successfully." },
+  "connectionFailed": {
+    "message": "Connection failed: $DETAIL$",
+    "placeholders": { "detail": { "content": "$1" } }
+  },
+  "noTranslationPerformance": { "message": "No local translation performance record yet." },
+  "lastTranslationPerformance": {
+    "message": "Last translation: $DURATION$s, $REQUESTS$ network requests, $RETRIES$ retries, $DEDUPLICATED$ duplicate segments removed; $COMPLETED$.",
+    "placeholders": {
+      "duration": { "content": "$1" },
+      "requests": { "content": "$2" },
+      "retries": { "content": "$3" },
+      "deduplicated": { "content": "$4" },
+      "completed": { "content": "$5" }
+    }
+  },
+  "settingsSaveFailed": { "message": "Settings could not be saved." }
 }
