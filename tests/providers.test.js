@@ -253,18 +253,34 @@ test("TokenHub keeps JSON response compatibility", () => {
   assert.equal(result.detectedLang, "en");
 });
 
-test("TokenHub rejects a multi-segment response without preserved boundaries", async () => {
+test("TokenHub adaptively bisects batches when segment boundaries are unreliable", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => tokenHubPlainResponse("合并成一段的译文");
+  const requestSizes = [];
+  globalThis.fetch = async (url, options) => {
+    const request = JSON.parse(options.body);
+    const texts = requestTexts(request);
+    requestSizes.push(texts.length);
+    if (texts.length > 1) {
+      return tokenHubPlainResponse(
+        texts.slice(0, -1).map(text => `T:${text}`).join("<SEP>"),
+        { inputTokens: 10, outputTokens: 5 }
+      );
+    }
+    return tokenHubPlainResponse(`T:${texts[0]}`, { inputTokens: 10, outputTokens: 5 });
+  };
   try {
-    await assert.rejects(
-      providers.translateBatchWithTencent(
-        ["first", "second"],
-        "zh",
-        { tencentApiKey: "test-key" }
-      ),
-      /did not preserve the translation segment boundaries/
+    const result = await providers.translateBatchWithTencent(
+      ["first", "second", "third", "fourth"],
+      "zh",
+      { tencentApiKey: "test-key" },
+      { structureRetryDelayMs: 0 }
     );
+    assert.deepEqual(requestSizes, [4, 2, 1, 1, 2, 1, 1]);
+    assert.deepEqual(result.translations, ["T:first", "T:second", "T:third", "T:fourth"]);
+    assert.equal(result.requestCount, 7);
+    assert.equal(result.inputTokens, 70);
+    assert.equal(result.outputTokens, 35);
+    assert.equal(result.retryCount, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }

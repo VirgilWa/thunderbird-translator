@@ -14,6 +14,8 @@
   const DEFAULT_TIMEOUT_MS = 45000;
   const DEFAULT_TENCENT_RATE_LIMIT_RETRIES = 2;
   const DEFAULT_TENCENT_RATE_LIMIT_RETRY_DELAY_MS = 500;
+  const DEFAULT_TENCENT_STRUCTURE_RETRY_DELAY_MS = 100;
+  const TENCENT_TRANSLATION_STRUCTURE_ERROR_CODE = "TOKENHUB_TRANSLATION_STRUCTURE_MISMATCH";
   const MAX_BATCH_ITEMS = 48;
   const MAX_BATCH_ESTIMATED_INPUT_TOKENS = 3200;
   const MAX_ITEM_CHARS = 2800;
@@ -248,13 +250,31 @@
     return match ? match[1].trim() : text;
   }
 
+  function tencentTranslationStructureError(message, expectedCount, actualCount = null) {
+    const error = new Error(message);
+    error.code = TENCENT_TRANSLATION_STRUCTURE_ERROR_CODE;
+    error.expectedCount = expectedCount;
+    if (Number.isInteger(actualCount) && actualCount >= 0) error.actualCount = actualCount;
+    return error;
+  }
+
+  function isTencentTranslationStructureError(error) {
+    return error?.code === TENCENT_TRANSLATION_STRUCTURE_ERROR_CODE;
+  }
+
   function validateTencentTranslations(translations, expectedCount, detectedLang = null) {
-    if (
-      !Array.isArray(translations) ||
-      translations.length !== expectedCount ||
-      translations.some(value => typeof value !== "string" || value.trim().length === 0)
-    ) {
-      throw new Error("Tencent TokenHub translation count did not match the request");
+    const actualCount = Array.isArray(translations) ? translations.length : null;
+    const hasEmptyTranslation = Array.isArray(translations) && translations.some(
+      value => typeof value !== "string" || value.trim().length === 0
+    );
+    if (!Array.isArray(translations) || actualCount !== expectedCount || hasEmptyTranslation) {
+      const error = tencentTranslationStructureError(
+        "Tencent TokenHub translation count did not match the request",
+        expectedCount,
+        actualCount
+      );
+      error.hasEmptyTranslation = hasEmptyTranslation;
+      throw error;
     }
     return { translations, detectedLang };
   }
@@ -262,6 +282,13 @@
   function parseTencentTranslations(content, expectedCount, segmentDelimiter = null) {
     const normalized = stripMarkdownFence(content);
     if (!normalized) {
+      if (expectedCount > 1) {
+        throw tencentTranslationStructureError(
+          "Tencent TokenHub returned an empty translation",
+          expectedCount,
+          0
+        );
+      }
       throw new Error("Tencent TokenHub returned an empty translation");
     }
 
@@ -288,7 +315,11 @@
       return validateTencentTranslations([plainText], expectedCount);
     }
     if (!segmentDelimiter || !plainText.includes(segmentDelimiter)) {
-      throw new Error("Tencent TokenHub did not preserve the translation segment boundaries");
+      throw tencentTranslationStructureError(
+        "Tencent TokenHub did not preserve the translation segment boundaries",
+        expectedCount,
+        1
+      );
     }
     return validateTencentTranslations(
       plainText.split(segmentDelimiter).map(value => value.trim()),
@@ -350,15 +381,27 @@
     if (typeof content !== "string") {
       throw new Error("Tencent TokenHub returned an invalid response");
     }
-    const parsed = parseTencentTranslations(
-      content,
-      texts.length,
-      request.segmentDelimiter
-    );
+    const inputTokens = Number(data?.usage?.prompt_tokens) || 0;
+    const outputTokens = Number(data?.usage?.completion_tokens) || 0;
+    let parsed;
+    try {
+      parsed = parseTencentTranslations(
+        content,
+        texts.length,
+        request.segmentDelimiter
+      );
+    } catch (error) {
+      if (isTencentTranslationStructureError(error)) {
+        error.inputTokens = inputTokens;
+        error.outputTokens = outputTokens;
+        error.model = data?.model || request.model;
+      }
+      throw error;
+    }
     return {
       ...parsed,
-      inputTokens: Number(data?.usage?.prompt_tokens) || 0,
-      outputTokens: Number(data?.usage?.completion_tokens) || 0,
+      inputTokens,
+      outputTokens,
       model: data?.model || request.model,
     };
   }
@@ -399,9 +442,67 @@
         );
         return { ...result, retryCount: attempt };
       } catch (error) {
-        if (!isTencentRetryableError(error) || attempt >= maxRetries) throw error;
+        if (!isTencentRetryableError(error) || attempt >= maxRetries) {
+          if (error && typeof error === "object") {
+            error.retryCount = (Number(error.retryCount) || 0) + attempt;
+          }
+          throw error;
+        }
         await waitWithSignal(baseDelayMs * (2 ** attempt), requestOptions.signal);
       }
+    }
+  }
+
+  function tencentStructureRetryDelayMs(requestOptions) {
+    const configuredDelay = Number(requestOptions.structureRetryDelayMs);
+    return Number.isFinite(configuredDelay) && configuredDelay >= 0
+      ? configuredDelay
+      : DEFAULT_TENCENT_STRUCTURE_RETRY_DELAY_MS;
+  }
+
+  async function translateTencentBatchAdaptively(
+    texts,
+    targetLanguage,
+    settings,
+    requestOptions = {}
+  ) {
+    try {
+      const result = await translateTencentBatchChunkWithRetry(
+        texts,
+        targetLanguage,
+        settings,
+        requestOptions
+      );
+      return { ...result, requestCount: 1 };
+    } catch (error) {
+      if (!isTencentTranslationStructureError(error) || texts.length <= 1) throw error;
+
+      const midpoint = Math.ceil(texts.length / 2);
+      const delayMs = tencentStructureRetryDelayMs(requestOptions);
+      await waitWithSignal(delayMs, requestOptions.signal);
+      const left = await translateTencentBatchAdaptively(
+        texts.slice(0, midpoint),
+        targetLanguage,
+        settings,
+        requestOptions
+      );
+      await waitWithSignal(delayMs, requestOptions.signal);
+      const right = await translateTencentBatchAdaptively(
+        texts.slice(midpoint),
+        targetLanguage,
+        settings,
+        requestOptions
+      );
+
+      return {
+        translations: [...left.translations, ...right.translations],
+        detectedLang: left.detectedLang || right.detectedLang,
+        inputTokens: (Number(error.inputTokens) || 0) + left.inputTokens + right.inputTokens,
+        outputTokens: (Number(error.outputTokens) || 0) + left.outputTokens + right.outputTokens,
+        model: left.model || right.model || error.model || null,
+        requestCount: 1 + left.requestCount + right.requestCount,
+        retryCount: (Number(error.retryCount) || 0) + left.retryCount + right.retryCount,
+      };
     }
   }
 
@@ -429,6 +530,7 @@
     let detectedLang = null;
     let inputTokens = 0;
     let outputTokens = 0;
+    let requestCount = 0;
     let retryCount = 0;
 
     for (const unit of units) {
@@ -438,7 +540,7 @@
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
       if (batchIndex > 0) await waitWithSignal(100, requestOptions.signal);
       const batch = batches[batchIndex];
-      const result = await translateTencentBatchChunkWithRetry(
+      const result = await translateTencentBatchAdaptively(
         batch.map(unit => unit.text),
         targetLanguage,
         settings,
@@ -450,6 +552,7 @@
       if (!detectedLang) detectedLang = result.detectedLang;
       inputTokens += result.inputTokens;
       outputTokens += result.outputTokens;
+      requestCount += Number(result.requestCount) || 0;
       retryCount += Number(result.retryCount) || 0;
     }
 
@@ -459,7 +562,7 @@
       detectedLang,
       inputTokens,
       outputTokens,
-      requestCount: batches.length,
+      requestCount,
       retryCount,
     };
   }

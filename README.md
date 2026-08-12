@@ -94,6 +94,12 @@ node --test tests/*.test.js
 
 ## Changelog
 
+### v1.9.2
+
+- Recovers from TokenHub segment-count and boundary mismatches by recursively splitting only the affected batch.
+- Keeps the fast single-request path when Hy-MT2 preserves every segment, while retaining atomic message updates during fallback.
+- Includes failed structural attempts in local request and token accounting without storing raw email or translation content.
+
 ### v1.9.1
 
 - Uses Hy-MT2's documented segment-delimiter protocol for batch translation while retaining compatibility with prior JSON responses.
