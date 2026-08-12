@@ -25,6 +25,7 @@ function tokenHubResponse(translations, options = {}) {
             translations,
           }),
         },
+        finish_reason: options.finishReason || "stop",
       }],
       usage: {
         prompt_tokens: options.inputTokens || 12,
@@ -32,6 +33,28 @@ function tokenHubResponse(translations, options = {}) {
       },
     },
   });
+}
+
+function tokenHubPlainResponse(content, options = {}) {
+  return fakeResponse({
+    json: {
+      model: options.model || "hy-mt2-lite",
+      choices: [{
+        message: { content },
+        finish_reason: options.finishReason || "stop",
+      }],
+      usage: {
+        prompt_tokens: options.inputTokens || 12,
+        completion_tokens: options.outputTokens || 8,
+      },
+    },
+  });
+}
+
+function requestTexts(request) {
+  const content = request.messages[1].content;
+  const delimiter = providers.constants.DEFAULT_TENCENT_SEGMENT_DELIMITER;
+  return content.includes(delimiter) ? content.split(delimiter) : [content];
 }
 
 test("splitLongText preserves content and respects the limit", () => {
@@ -65,9 +88,38 @@ test("TokenHub request uses Bearer API Key and never places it in the body", () 
   assert.equal(request.headers.Authorization, "Bearer test-tokenhub-key");
   assert.equal(request.body.includes("test-tokenhub-key"), false);
   assert.equal(body.model, "hy-mt2-lite");
+  assert.equal(body.temperature, 0);
   assert.equal(body.messages[1].role, "user");
-  assert.deepEqual(JSON.parse(body.messages[1].content), ["hello world"]);
+  assert.equal(body.messages[1].content, "hello world");
   assert.match(body.messages[0].content, /strictly as data/i);
+});
+
+test("TokenHub multi-segment request follows the documented separator protocol", () => {
+  const request = providers.buildTencentRequest(
+    ["first", "second", "third"],
+    "zh",
+    { tencentApiKey: "test-key" }
+  );
+  const body = JSON.parse(request.body);
+
+  assert.equal(request.segmentDelimiter, "<SEP>");
+  assert.equal(body.messages[1].content, "first<SEP>second<SEP>third");
+  assert.match(body.messages[0].content, /exactly 2 copies/i);
+  assert.match(body.messages[0].content, /same order/i);
+});
+
+test("TokenHub selects a collision-free separator when source text contains SEP", () => {
+  const request = providers.buildTencentRequest(
+    ["source contains <SEP>", "second"],
+    "zh",
+    { tencentApiKey: "test-key" }
+  );
+
+  assert.equal(request.segmentDelimiter, "<TB_TRANSLATOR_SEP_1>");
+  assert.equal(
+    JSON.parse(request.body).messages[1].content,
+    "source contains <SEP><TB_TRANSLATOR_SEP_1>second"
+  );
 });
 
 test("unknown TokenHub model safely falls back to Hy-MT2-Lite", () => {
@@ -103,8 +155,8 @@ test("24 short message segments are translated in one TokenHub request", async (
   globalThis.fetch = async (url, options) => {
     requestCount += 1;
     const request = JSON.parse(options.body);
-    const texts = JSON.parse(request.messages[1].content);
-    return tokenHubResponse(texts.map((_, index) => `译文${index + 1}`));
+    const texts = requestTexts(request);
+    return tokenHubPlainResponse(texts.map((_, index) => `译文${index + 1}`).join("<SEP>"));
   };
   const texts = Array.from({ length: 24 }, (_, index) => `Email segment ${index + 1}`);
 
@@ -127,8 +179,8 @@ test("large translation batches are split and reassembled in source order", asyn
   globalThis.fetch = async (url, options) => {
     requestCount += 1;
     const request = JSON.parse(options.body);
-    const texts = JSON.parse(request.messages[1].content);
-    return tokenHubResponse(texts.map(text => `T:${text}`));
+    const texts = requestTexts(request);
+    return tokenHubPlainResponse(texts.map(text => `T:${text}`).join("<SEP>"));
   };
 
   try {
@@ -175,15 +227,75 @@ test("TokenHub rate limiting retries twice with exponential backoff", async () =
   }
 });
 
-test("TokenHub rejects malformed structured translation output", async () => {
+test("TokenHub accepts a plain-text single translation", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => fakeResponse({
-    json: { choices: [{ message: { content: "not json" } }] },
-  });
+  globalThis.fetch = async () => tokenHubPlainResponse("纯文本译文");
+  try {
+    const result = await providers.translateWithTencent(
+      "plain text",
+      "zh",
+      { tencentApiKey: "test-key" }
+    );
+    assert.equal(result.translated, "纯文本译文");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("TokenHub keeps JSON response compatibility", () => {
+  const result = providers.parseTencentTranslations(
+    JSON.stringify({ source_language: "en", translations: ["一", "二"] }),
+    2,
+    "<SEP>"
+  );
+
+  assert.deepEqual(result.translations, ["一", "二"]);
+  assert.equal(result.detectedLang, "en");
+});
+
+test("TokenHub adaptively bisects batches when segment boundaries are unreliable", async () => {
+  const originalFetch = globalThis.fetch;
+  const requestSizes = [];
+  globalThis.fetch = async (url, options) => {
+    const request = JSON.parse(options.body);
+    const texts = requestTexts(request);
+    requestSizes.push(texts.length);
+    if (texts.length > 1) {
+      return tokenHubPlainResponse(
+        texts.slice(0, -1).map(text => `T:${text}`).join("<SEP>"),
+        { inputTokens: 10, outputTokens: 5 }
+      );
+    }
+    return tokenHubPlainResponse(`T:${texts[0]}`, { inputTokens: 10, outputTokens: 5 });
+  };
+  try {
+    const result = await providers.translateBatchWithTencent(
+      ["first", "second", "third", "fourth"],
+      "zh",
+      { tencentApiKey: "test-key" },
+      { structureRetryDelayMs: 0 }
+    );
+    assert.deepEqual(requestSizes, [4, 2, 1, 1, 2, 1, 1]);
+    assert.deepEqual(result.translations, ["T:first", "T:second", "T:third", "T:fourth"]);
+    assert.equal(result.requestCount, 7);
+    assert.equal(result.inputTokens, 70);
+    assert.equal(result.outputTokens, 35);
+    assert.equal(result.retryCount, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("TokenHub reports truncated output before attempting to parse it", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => tokenHubPlainResponse(
+    "partial output",
+    { finishReason: "length" }
+  );
   try {
     await assert.rejects(
-      providers.translateWithTencent("hello", "zh", { tencentApiKey: "test-key" }),
-      /invalid structured translation data/
+      providers.translateWithTencent("long input", "zh", { tencentApiKey: "test-key" }),
+      /translation output was truncated before completion/
     );
   } finally {
     globalThis.fetch = originalFetch;
