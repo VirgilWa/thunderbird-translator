@@ -197,6 +197,53 @@ test("large translation batches are split and reassembled in source order", asyn
   }
 });
 
+test("long translations preserve structural newlines at chunk boundaries", async () => {
+  const originalFetch = globalThis.fetch;
+  const firstNode = "A".repeat(2799);
+  const secondNode = "B".repeat(100);
+  const requestedTexts = [];
+  globalThis.fetch = async (url, options) => {
+    const request = JSON.parse(options.body);
+    const texts = requestTexts(request);
+    requestedTexts.push(...texts);
+    return tokenHubPlainResponse(
+      texts.map(text => `  T:${text}  `).join("<SEP>")
+    );
+  };
+
+  try {
+    const result = await providers.translateBatchWithTencent(
+      [`${firstNode}\n${secondNode}`],
+      "en",
+      { tencentApiKey: "test-key" }
+    );
+    assert.deepEqual(requestedTexts, [firstNode, secondNode]);
+    assert.equal(result.translations[0], `T:${firstNode}\nT:${secondNode}`);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("whitespace-only translation units are preserved without a network request", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("whitespace-only input must not reach the provider");
+  };
+
+  try {
+    const source = " \n\t ";
+    const result = await providers.translateBatchWithTencent(
+      [source],
+      "zh",
+      { tencentApiKey: "test-key" }
+    );
+    assert.deepEqual(result.translations, [source]);
+    assert.equal(result.requestCount, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("TokenHub rate limiting retries twice with exponential backoff", async () => {
   const originalFetch = globalThis.fetch;
   let requestCount = 0;

@@ -58,6 +58,38 @@
     return parts;
   }
 
+  function splitEdgeWhitespace(text) {
+    const value = String(text ?? "");
+    const leadingWhitespace = value.match(/^\s+/)?.[0] || "";
+    const withoutLeading = value.slice(leadingWhitespace.length);
+    if (!withoutLeading) {
+      return { leadingWhitespace: value, text: "", trailingWhitespace: "" };
+    }
+
+    const trailingWhitespace = withoutLeading.match(/\s+$/)?.[0] || "";
+    return {
+      leadingWhitespace,
+      text: withoutLeading.slice(0, withoutLeading.length - trailingWhitespace.length),
+      trailingWhitespace,
+    };
+  }
+
+  function restoreTranslationUnit(unit, translation) {
+    return `${unit.leadingWhitespace}${String(translation ?? "").trim()}${unit.trailingWhitespace}`;
+  }
+
+  function joinTranslatedPieces(pieces, targetLanguage) {
+    const fallbackSeparator = targetLanguage === "en" ? " " : "";
+    return pieces.reduce((joined, piece, index) => {
+      const normalizedPiece = String(piece ?? "");
+      if (index === 0) return normalizedPiece;
+
+      const previousPiece = String(pieces[index - 1] ?? "");
+      const hasSourceWhitespaceBoundary = /\s$/.test(previousPiece) || /^\s/.test(normalizedPiece);
+      return `${joined}${hasSourceWhitespaceBoundary ? "" : fallbackSeparator}${normalizedPiece}`;
+    }, "");
+  }
+
   function cancellationError() {
     const error = new Error("Translation cancelled");
     error.name = "AbortError";
@@ -143,12 +175,16 @@
     const units = [];
     texts.forEach((text, sourceIndex) => {
       const normalized = String(text ?? "");
-      if (!normalized) {
-        units.push({ sourceIndex, pieceIndex: 0, text: "", empty: true });
-        return;
-      }
       splitLongText(normalized, MAX_ITEM_CHARS).forEach((piece, pieceIndex) => {
-        units.push({ sourceIndex, pieceIndex, text: piece, empty: false });
+        const edges = splitEdgeWhitespace(piece);
+        units.push({
+          sourceIndex,
+          pieceIndex,
+          text: edges.text,
+          empty: edges.text.length === 0,
+          leadingWhitespace: edges.leadingWhitespace,
+          trailingWhitespace: edges.trailingWhitespace,
+        });
       });
     });
     return units;
@@ -534,7 +570,9 @@
     let retryCount = 0;
 
     for (const unit of units) {
-      if (unit.empty) translatedPieces[unit.sourceIndex][unit.pieceIndex] = "";
+      if (unit.empty) {
+        translatedPieces[unit.sourceIndex][unit.pieceIndex] = restoreTranslationUnit(unit, "");
+      }
     }
 
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
@@ -547,7 +585,10 @@
         requestOptions
       );
       batch.forEach((unit, index) => {
-        translatedPieces[unit.sourceIndex][unit.pieceIndex] = result.translations[index];
+        translatedPieces[unit.sourceIndex][unit.pieceIndex] = restoreTranslationUnit(
+          unit,
+          result.translations[index]
+        );
       });
       if (!detectedLang) detectedLang = result.detectedLang;
       inputTokens += result.inputTokens;
@@ -556,9 +597,8 @@
       retryCount += Number(result.retryCount) || 0;
     }
 
-    const pieceSeparator = targetLanguage === "en" ? " " : "";
     return {
-      translations: translatedPieces.map(pieces => pieces.join(pieceSeparator).trim()),
+      translations: translatedPieces.map(pieces => joinTranslatedPieces(pieces, targetLanguage)),
       detectedLang,
       inputTokens,
       outputTokens,
