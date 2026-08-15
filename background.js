@@ -1171,42 +1171,57 @@ messenger.composeAction.onClicked.addListener(async (tab) => {
 
 // --- Message handler (options page) ---
 
-messenger.runtime.onMessage.addListener(async (message) => {
-  if (message.command === "testTencentConnection") {
-    try {
-      const result = await TranslatorProviders.translateWithTencent("connection test", "zh", {
-        tencentApiKey: message.tencentApiKey,
-        tencentModel: message.tencentModel,
-      });
-      scheduleTencentUsage(result.inputTokens, result.outputTokens);
-      await flushTencentUsage();
-      return { success: true };
-    } catch (e) {
-      return { success: false, error: normalizedError(e) };
-    }
-  }
-  if (message.command === "getTencentUsage") {
-    return { success: true, ...(await getTencentUsageSummary()) };
-  }
-  if (message.command === "saveSettings") {
-    if (!SELECTABLE_SERVICES.has(message.service)) {
-      return {
-        success: false,
-        error: i18n(
-          "chooseProviderError",
-          [],
-          "Choose an available translation provider in add-on settings."
-        ),
-      };
-    }
-    await writeSettings({
-      service:               message.service,
-      settingsVersion:       CURRENT_SETTINGS_VERSION,
-      tencentApiKey:         message.tencentApiKey,
-      tencentModel:          TranslatorProviders.normalizeTencentModel(message.tencentModel),
+async function handleTestTencentConnection(message) {
+  try {
+    const result = await TranslatorProviders.translateWithTencent("connection test", "zh", {
+      tencentApiKey: message.tencentApiKey,
+      tencentModel: message.tencentModel,
     });
-    await updateReadButtonTitle();
-    await updateComposeButtonTitle();
+    scheduleTencentUsage(result.inputTokens, result.outputTokens);
+    await flushTencentUsage();
     return { success: true };
+  } catch (e) {
+    return { success: false, error: normalizedError(e) };
   }
-});
+}
+
+async function handleGetTencentUsage() {
+  return { success: true, ...(await getTencentUsageSummary()) };
+}
+
+async function handleSaveSettings(message) {
+  if (!SELECTABLE_SERVICES.has(message.service)) {
+    return {
+      success: false,
+      error: i18n(
+        "chooseProviderError",
+        [],
+        "Choose an available translation provider in add-on settings."
+      ),
+    };
+  }
+  await writeSettings({
+    service:               message.service,
+    settingsVersion:       CURRENT_SETTINGS_VERSION,
+    tencentApiKey:         message.tencentApiKey,
+    tencentModel:          TranslatorProviders.normalizeTencentModel(message.tencentModel),
+  });
+  await updateReadButtonTitle();
+  await updateComposeButtonTitle();
+  return { success: true };
+}
+
+function handleOptionsMessage(message) {
+  switch (message?.command) {
+    case "testTencentConnection":
+      return handleTestTencentConnection(message);
+    case "getTencentUsage":
+      return handleGetTencentUsage();
+    case "saveSettings":
+      return handleSaveSettings(message);
+    default:
+      return undefined;
+  }
+}
+
+messenger.runtime.onMessage.addListener(handleOptionsMessage);
